@@ -29,6 +29,7 @@ struct ngx_http_upstream_rr_peer_s {
     custom_versioned_server_t       *light;
     custom_versioned_server_t       *heavy;
     custom_versioned_server_t       *version;    
+    ngx_uint_t                      pt;
 
     ngx_uint_t                      conns;
     ngx_uint_t                      max_conns;

@@ -98,6 +98,7 @@ typedef struct {
     ngx_uint_t                       weight;
     ngx_uint_t                       max_conns;
     ngx_uint_t                       max_fails;
+    ngx_uint_t			     pt;
     time_t                           fail_timeout;
     ngx_msec_t                       slow_start;
     ngx_uint_t                       down;

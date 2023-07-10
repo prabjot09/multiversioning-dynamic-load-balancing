@@ -59,7 +59,7 @@ ngx_http_upstream_init_round_robin(ngx_conf_t *cf,
     ngx_http_upstream_srv_conf_t *us)
 {
     ngx_url_t                      u;
-    ngx_uint_t                     i, j, n, w, t;
+    ngx_uint_t                     i, j, n, w, t, pt;
     ngx_http_upstream_server_t    *server;
     ngx_http_upstream_rr_peer_t   *peer, **peerp;
     ngx_http_upstream_rr_peers_t  *peers, *backup;
@@ -73,6 +73,7 @@ ngx_http_upstream_init_round_robin(ngx_conf_t *cf,
         n = 0;
         w = 0;
         t = 0;
+        pt = 0;
 
         for (i = 0; i < us->servers->nelts; i++) {
             if (server[i].backup) {
@@ -84,6 +85,10 @@ ngx_http_upstream_init_round_robin(ngx_conf_t *cf,
 
             if (!server[i].down) {
                 t += server[i].naddrs;
+            }
+            
+            if (server[i].pt > 0) {
+                pt = server[i].pt;
             }
         }
 
@@ -156,6 +161,7 @@ ngx_http_upstream_init_round_robin(ngx_conf_t *cf,
                 peer[n].fail_timeout = server[i].fail_timeout;
                 peer[n].down = server[i].down;
                 peer[n].server = server[i].name;
+                peer[n].pt = pt;
 
                 *peerp = &peer[n];
                 peerp = &peer[n].next;
@@ -608,7 +614,7 @@ ngx_http_upstream_get_peer(ngx_http_upstream_rr_peer_data_t *rrp)
     
     heavy = NULL;
     light = NULL;
-    pt = 1000;
+    pt = 0;
     
     for (peer = rrp->peers->peer, i = 0;
          peer;
@@ -634,6 +640,10 @@ ngx_http_upstream_get_peer(ngx_http_upstream_rr_peer_data_t *rrp)
 
         if (peer->max_conns && peer->conns >= peer->max_conns) {
             continue;
+        }
+        
+        if (peer->pt > 0) {
+            pt = peer->pt;
         }
         
         if (heavy == NULL && peer->heavy != NULL) {
@@ -672,6 +682,9 @@ ngx_http_upstream_get_peer(ngx_http_upstream_rr_peer_data_t *rrp)
     
     ngx_time_t * tp = ngx_timeofday();
     
+    if (pt == 0) {
+        return heavy;
+    }
     
     if (heavy->version->predicted_avg_rt >= pt) {
         heavy->version->predicted_avg_rt = pt - 1;

@@ -6207,7 +6207,7 @@ ngx_http_upstream_server(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
     time_t                       fail_timeout;
     ngx_str_t                   *value, s;
     ngx_url_t                    u;
-    ngx_int_t                    weight, max_conns, max_fails;
+    ngx_int_t                    weight, max_conns, max_fails, pt;
     ngx_uint_t                   i;
     ngx_http_upstream_server_t  *us;
 
@@ -6224,6 +6224,7 @@ ngx_http_upstream_server(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
     max_conns = 0;
     max_fails = 1;
     fail_timeout = 10;
+    pt = 0;
 
     for (i = 2; i < cf->args->nelts; i++) {
 
@@ -6239,6 +6240,17 @@ ngx_http_upstream_server(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
                 goto invalid;
             }
 
+            continue;
+        }
+        
+        if (ngx_strncmp(value[i].data, "pt=", 3) == 0) {
+        
+            pt = ngx_atoi(&value[i].data[3], value[i].len - 3);
+            
+            if (pt == NGX_ERROR || pt <= 0) {
+                goto invalid;
+            }
+            
             continue;
         }
 
@@ -6336,6 +6348,7 @@ ngx_http_upstream_server(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
     us->max_conns = max_conns;
     us->max_fails = max_fails;
     us->fail_timeout = fail_timeout;
+    us->pt = pt;
 
     return NGX_CONF_OK;
 
