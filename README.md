@@ -47,5 +47,30 @@ The SLA (Service Level Agreement) specifies an upper-bound on the response-time 
 6. If your NGINX is currently running, use `sudo nginx -s reload` to update the configuration at run-time. Otherwise, use `sudo nginx` to start up the load balancer.
 
   
+# Source Code Modifications:
+The original NGINX source code has been modified in 3 main ways.
+1. New data structures have been created to represent the service versions and relevant metrics used to perform the new load balancing.
+2. The replacement of the Round Robin load balancing algorithm with the custom load balancing technique defined in this project done in **./src/http/ngx_http_upstream_round_robin.c**.
+3. Additional logging done after request completion, and updating the metrics used for the load balancing as requests are completed.
 
+The specific modifications and assoicated source code files are listed below:
+1. **./src/http/ngx_http_request.h**:
+   1. Created `custom_versioned_server_t` data structure to represent versions and relevant data such as the number of requests completed, number of active requests, list of active request start times, prediction metrics (used by load balancing algorithm), etc.
+   2. Created `req_time_t` data structure to represent the start times of all active request in order of oldest to newest. Implemented as a linked list.
+   3. Modified `ngx_http_request_t` data structure to specify the version that a request is sent to, its start time, no. of requests completed at its arrival, etc.
+   
+2. **./src/http/ngx_http_upstream_round_robin.h**:
+   1. Modified `ngx_http_upstream_rr_peer_t` data structure to include the version of the upstream server, and its performance target.
+      
+3. **./src/http/ngx_http_upstream_round_robin.c**:
+   1. Created `custom_server_init()` method to initialize the `custom_versioned_server_t` data structure with initial values.
+   2. Modified `ngx_http_upstream_init_round_robin()` method to initialize 2 structures for each version `custom_versioned_server_t` and specify the correct version for each upstream server as specified in the nginx.conf configuration file. Also, retrieve the performance target from the configuration file.
+   3. Modified `ngx_http_upstream_get_peer()` method to replace the round robin load balancing strategy with my own custom load balancing. In brief, it retrieves the data of both the light and heavy versions of the service, and applies the custom load balancing technique to predict the response time of an incoming request and retrieve the duration of the oldest active request. If either of these are violating the performance target, then send the request to the light version. Otherwise, the load balancer has predicted that the system load is low enough that we can provide the request full service by sending it to the heavy version.
+
+4. **./src/http/ngx_http_upstream.c**:
+   1. Modified the `ngx_http_upstream_server()` method to accept the performance target configuration parameter.
+   2. Modified the `ngx_http_upstream_connect()` method to initialize information to the request structure relevant to the implemented load balancing such as request arrival time, selected service version, no. of completed requests at arrival, etc.
+
+5. **./src/http/modules/ngx_http_log_module.c**
+   1. Modified the `ngx_http_log_request_time()` method to log additional relevant information for each request such as the prediction made by the load balancing technique, the no. of active requests, the version of the service that responded to this request, arrival time, etc. It also includes the calculation done to update the prediction scheme based on the response time logs of the most recently completed request.
 
