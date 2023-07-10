@@ -9,7 +9,9 @@ At the current stage of development, the load balancing is supported for softwar
 
 # Logic Behind Multi-versioning
 Typically if the current resources of the system and the number of service deploymenets are insufficient to support the current load on the service without violating the response time SLA (Service Level Agreement), then the service would be scaled up. However, this may become costly to keep scaling up whenever the load exceeds current capacity. An alternative is to have a second version of the service which provides lower quality service, but it is able to handle much larger loads given the same number of resources and deployments. In this manner, clients can recieve timely service without the service provider from having to incur unmanagable costs. For more information about this type of multiversioning and its benefits, you can refer to a research paper that this project closely follows:
-A framework for satisfying the performance requirements of containerized software systems through multi-versioning - http://dx.doi.org/10.1145/3358960.3379125
+A framework for satisfying the performance requirements of containerized software systems through multi-versioning - http://dx.doi.org/10.1145/3358960.3379125.
+
+You may also refer to the source code for the project developed in this paper whose purpose is to extend the Docker containerization framework to multiversioned microservice deployment. It has been added to this project here: [DockerMV](https://github.com/prabjot09/nginx-dynamic-load-balancing/tree/main/DockerMV_SaraGholami)
 
 
 # Definition of Performance Target:
