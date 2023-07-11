@@ -46,6 +46,13 @@ The SLA (Service Level Agreement) specifies an upper-bound on the response-time 
 5. To save your configuration file run the command from the ./conf directory: `sudo cp ./nginx.conf /etc/nginx/nginx.conf`.
 6. If your NGINX is currently running, use `sudo nginx -s reload` to update the configuration at run-time. Otherwise, use `sudo nginx` to start up the load balancer.
 
+
+
+# Evaluating Service Utilization:
+In order to evaluate how the system is responding to the current load, a script has been created which will output in real-time the number of requests that each version of the service has recieved and the percent of request recieved by the heavy-weight version (in other words, the percent of requests given full service). The script can be found here: [proportion.sh](https://github.com/prabjot09/nginx-dynamic-load-balancing/blob/main/proportion.sh)
+To run the script use this command from the root directory of this repository: `sh proportion.sh`.
+This script is meant to be run while the load balancer is running and is recieving some load to evaluate its effectiveness in balancing performance (minimizing response times) and service quality (maximizing requests run by heavy-weight version).
+
   
 # Source Code Modifications:
 The original NGINX source code has been modified in 3 main ways.
@@ -75,6 +82,7 @@ The specific modifications and assoicated source code files are listed below:
    1. Modified the `ngx_http_log_request_time()` method to log additional relevant information for each request such as the prediction made by the load balancing technique, the no. of active requests, the version of the service that responded to this request, arrival time, etc. It also includes the calculation done to update the prediction scheme based on the response time logs of the most recently completed request.
 
 
+
 # Load Balancing Setup/Calculations:
 This set up generates 2 values ($p$ and $t$ which are used for the load balancing logic).
 1. **Response Time Prediction**: For each incoming request the load balancer predicts the response time if the request were to be executed on the heavy-weight version. We denote this predicted time with $p$. 
@@ -84,6 +92,7 @@ This set up generates 2 values ($p$ and $t$ which are used for the load balancin
 2. **Current Load Management**: The load balancer keeps track of all active requests and how long it has been since the request arrived. We denote the active duration of the oldest active request as $t$.
    1. **Request Queue**: A linked list data structure associated with each service version containing all active requests on that service starting from the oldest to the newest. As new requests arrive, their arrival time is recorded at the end of the queue. As requests are completed, their arrival times are set to NULL.
    2. **Oldest Active Request**: Given the above request queue, if we remove elements from the queue until the first element has a non-NULL arrival time, then the first element (if any left) will be the arrival time of the oldest request. By comparing it with the current time the load balancer calculates the elapsed time since the requests arrival. This time is referred to as $t$.
+
 
 # Load Balancing Logic:
 For the explaination behind the variables used in this section refer to the previous section on **Load Balancing Setup/Calculations.**
