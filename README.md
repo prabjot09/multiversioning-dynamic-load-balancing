@@ -15,6 +15,8 @@ This is an extension of NGINX which implements load balancing for multiversioned
   - [Source Code Modifications](#src-code)
   - [Load Balancing Calculations](#lb-math)
   - [Load Balancing Logic](#lb-logic)
+- [Testing the Project](#test)
+  - [Test Using ZNN News Service](#znn)
 
 <a name="intro"/>
 
@@ -141,3 +143,38 @@ Note: As mentioned earlier $pt$ refers to the performance target (i.e. the upper
 2. If $(t + e_f) \ge pt$, send request to light-weight version of service.
 3. Otherwise, send request to heavy-weight version of service.
 Reasoning: If either we predict the request to exceed the performance target (response time upper bound) if sent to the heavy-weight version or that the current load on the heavy-weight version exceeds the performance target, then the current system load is too high to give the request full service. However, when neither of these conditions are violated, then the load on the system is considered low enought that we can safely provide full service for this request.
+
+<br>
+<br>
+<a name="test"/>
+  
+# Testing the Project
+This section goes over how to run the tests that showcase the performance of the system.
+<a name"znn"/>
+
+## Test with ZNN News Service
+Note: This experiment also requires the installation of Docker which is also part of the setup for DockerMV. Do not skip the installation of Docker when you are setting up DockerMV later in this test.
+
+This service has the following 2 versions: 
+
+- `znn-text` - The light-weight version which provides news only in the form of text.
+- `znn-multimedia` - The heavy-weight version which provides news alongside relevant images.
+
+The following are the steps required to execute the test:
+1. Set up and compile the DockerMV software on your system. Refer to the README documentation in the "DockerMV_SaraGholami" folder of the root directory in this repo to install this project. Make sure to preform all the steps listed under the "How to Use?" section of that README file.
+2. Once DockerMV is set up, navigate to the root directory of DockerMV.
+3. Navigate to the following directory from the root directory of DockerMV: `./go/src/github.com/docker/cli` within DockerMV.
+4. From this directory, open a terminal and run this command: `hostname -I | awk '{print $1}'`. The output is your IP address and it will be referred to as <HOST_IP>
+5. Run the following commands without changing the current directory. Replace <HOST_IP> with the output recieved above. If the DockerMV program is not located in the $HOME directory, please replace '$HOME' with the path to the directory:
+
+``
+sudo docker run --network="my-net" -d -p 3306:3306 alirezagoli/znn-mysql:v1
+
+./build/docker service create <HOST_IP> my-net my_znn 1081 $HOME/DockerMV/znn_sample_rule.txt alirezagoli/znn-text:v1 1 1g 1g 0.2 alirezagoli/znn-multimedia:v1 1 1g 1g 0.2
+``
+
+6. Run the following command to identify the ports associated with each version that has been launched: `sudo docker container ls`. The output should look similar to the image below.
+
+![image](https://github.com/prabjot09/multiversioning-dynamic-load-balancing/assets/77180065/e0fd7aa3-7089-4f65-a492-f80dd1ae41be)
+
+7. 
