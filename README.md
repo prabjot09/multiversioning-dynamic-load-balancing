@@ -245,15 +245,16 @@ JMeter is an application that uses Java 8 to simulate loads on servers. The foll
 1. Install Java 8+ on the host that you want to run JMeter on. This does not necessarily need to be the same host where the services to be tested are launched.
 2. Install Apache JMeter from an archive of their releases. We used Apache JMeter 5.5 however more recent releases should work fine as well. The releases can be found [here](https://archive.apache.org/dist/jmeter/binaries/) and download the .zip file of your preferred release. The release for JMeter 5.5 is found [here](https://archive.apache.org/dist/jmeter/binaries/apache-jmeter-5.5.zip). In the case that these links become obsolete, please go to the official site of Apache JMeter and try to find the 'Download Releases' section where you may find instructions to help you.
 3. Extract the contents of the .zip file to your preferred directory.
-4. Open a terminal and navigate to the root directory of the extracted contents which should be called `apache-jmeter-<version>`.
-5. Navigate to the /bin folder and execute the command to launch the load testing UI: ``./jmeter``
-6. Once JMeter is launched, on the navigation bar at the top select File->Open.
-7. Now find the .jmx file you want to use to perform the load test. There are 2 default test files you can download that are provided in the root directory of DockerMV for each of the tested services. The ZNN test file can be found [here](https://github.com/pacslab/DockerMV/blob/master/znn.jmx) and the Teastore test file can be found [here](https://github.com/pacslab/DockerMV/blob/master/teastore.jmx).
-8. Ensure that the host and ports for the test case are set to the match the service you'd like to test. In the case of the ZNN service requests should be sent to `http://<HOST_IP>:<LB_PORT>`. In the case of the Teastore service requests should be sent to `http://<HOST_IP>:<WEBUI_PORT>`
+4. Install the JMeter plugins manager by following the instructions [here](https://jmeter-plugins.org/install/Install/). The restart is not required since we haven't started JMeter yet.
+5. Open a terminal and navigate to the root directory of the extracted contents which should be called `apache-jmeter-<version>`.
+6. Navigate to the /bin folder and execute the command to launch the load testing UI: ``./jmeter``
+7. Once JMeter is launched, on the navigation bar at the top select File->Open.
+8. Now find the .jmx file you want to use to perform the load test. There are 2 default test files you can download that are provided in the root directory of DockerMV for each of the tested services. The ZNN test file can be found [here](https://github.com/pacslab/DockerMV/blob/master/znn.jmx) and the Teastore test file can be found [here](https://github.com/pacslab/DockerMV/blob/master/teastore.jmx).
+9. Ensure that the host and ports for the test case are set to the match the service you'd like to test. In the case of the ZNN service requests should be sent to `http://<HOST_IP>:<LB_PORT>`. In the case of the Teastore service requests should be sent to `http://<HOST_IP>:<WEBUI_PORT>`
    1. If using the **znn.jmx** test file, using the navigation panel on the left, navigate to 'Test Plan' -> 'Threads' -> 'HTTP Request' to configure the IP address and Port Number. Navigate to 'Test Plan' -> 'Threads' to configure the amount of load and the duration of the load tests.
    2. If using the **teastore.jmx** test file, using the navigation panel on the left, navigate to 'Teastore' and set all relevant parameters in the `User Defined Variables` selection on the right.
-9. Save the file after making all the necessary changes and close (not minimize) the UI.
-10. From the same terminal as before run the following command to execute the load tests. Any path and file/folder name will work as long as the directory specified in the path exists, however the name and path of <TEST_FILE> must be the same as the file edited in step (8) :
+10. Save the file after making all the necessary changes and close (not minimize) the UI.
+11. From the same terminal as before run the following command to execute the load tests. Any path and file/folder name will work as long as the directory specified in the path exists, however the name and path of <TEST_FILE> must be the same as the file edited in step (8) :
 
 ``./jmeter -n -t ./<path-to-file>/<TEST_FILE>.jmx -l ./<path-to-file>/<file_name>.csv -e -o ./<path-to-folder>/<results folder>``
 
