@@ -21,7 +21,7 @@ This is an extension of NGINX which implements load balancing for multiversioned
 <a name="intro"/>
 
 # Intro
-
+This section discusses the conceptual background behind the project and defines the term 'performance target' used in the rest of the documentation.
 <a name="desc"/>
 
 ## Description
@@ -45,7 +45,7 @@ The SLA (Service Level Agreement) specifies an upper-bound on the response-time 
 <a name="start"/>
 
 # Getting Started with Project:
-
+This section covers how to run the install, compile and configure the load balancer. It also goes over a helpful script which allows the tester to see the distribution of requests that go to each version of the service.
 <a name="setup"/>
 
 ## Set-up Instructions on Linux:
@@ -86,10 +86,12 @@ In order to evaluate how the system is responding to the current load, a script 
 To run the script use this command from the root directory of this repository: `sh proportion.sh`.
 This script is meant to be run while the load balancer is running and is recieving some load to evaluate its effectiveness in balancing performance (minimizing response times) and service quality (maximizing requests run by heavy-weight version).
 
+The output of the script is in the terminal that it is run in, but it also produces a .csv file which can be plotted later to visualize the output. This file will be generated in the directory `/var/log/nginx/usage.csv` on the host that runs the load balancer.
+
 <a name="logic"/>
 
 # Project Logic
-
+This sections covers the theory behind the project, the modifications made to the default NGINX load balancing and the logic behind the decisions made.
 <a name="src-code"/>
    
 ## Source Code Modifications:
@@ -150,7 +152,7 @@ Reasoning: If either we predict the request to exceed the performance target (re
   
 # Testing the Project
 This section goes over how to run the tests that showcase the performance of the system.
-<a name"znn"/>
+<a name="znn"/>
 
 ## Test with ZNN News Service
 Note: This experiment also requires the installation of Docker which is also part of the setup for DockerMV. Do not skip the installation of Docker when you are setting up DockerMV later in this test.
@@ -167,14 +169,26 @@ The following are the steps required to execute the test:
 4. From this directory, open a terminal and run this command: `hostname -I | awk '{print $1}'`. The output is your IP address and it will be referred to as <HOST_IP>
 5. Run the following commands without changing the current directory. Replace <HOST_IP> with the output recieved above. If the DockerMV program is not located in the $HOME directory, please replace '$HOME' with the path to the directory:
 
-``
-sudo docker run --network="my-net" -d -p 3306:3306 alirezagoli/znn-mysql:v1
+``sudo docker run --network="my-net" -d -p 3306:3306 alirezagoli/znn-mysql:v1``
 
-./build/docker service create <HOST_IP> my-net my_znn 1081 $HOME/DockerMV/znn_sample_rule.txt alirezagoli/znn-text:v1 1 1g 1g 0.2 alirezagoli/znn-multimedia:v1 1 1g 1g 0.2
-``
+``./build/docker service create <HOST_IP> my-net my_znn 1081 $HOME/DockerMV/znn_sample_rule.txt alirezagoli/znn-text:v1 1 1g 1g 0.2 alirezagoli/znn-multimedia:v1 1 1g 1g 0.2``
 
 6. Run the following command to identify the ports associated with each version that has been launched: `sudo docker container ls`. The output should look similar to the image below.
 
 ![image](https://github.com/prabjot09/multiversioning-dynamic-load-balancing/assets/77180065/e0fd7aa3-7089-4f65-a492-f80dd1ae41be)
 
-7. 
+7. Note the port of the heavy-weight version underlined in blue (let's call this 'PORT_H') and note the port of the light-weight version underlined in green (let's call this 'PORT_L').
+8. Switch the current working directory to the root directory of this repository. Then, open the file `conf/nginx.conf`
+9. Edit the `upstream` block in the file to correctly configure the load balancer by following the given format and replace the parameters <...> with information specific for you. Further guidance for this can be found [here](#lb-config).
+    
+``
+upstream backend {
+    server <HOST_IP>:<PORT_H> weight=2 pt=<user_defined_performance_target>;
+    server <HOST_IP>:<PORT_L> weight=7;
+}
+``
+
+10. Inside the `server` block change the number listed beside `listen` to the port that you want the load balancer to run on (This port must not be already in use). Let's call this port `LB_PORT`
+11. Save the file and use the following command to apply the configuration: `sudo cp ./conf/nginx.conf /etc/nginx/nginx.conf`
+12. Run the load balancer with the command: `sudo nginx`. If the service is already running, then use `sudo nginx -s reload` to restart it.
+13. Now you can use a load testing application by sending requests to `http://<HOST_IP>:<NGINX_PORT>/news.php`. A guide on load testing with the JMeter application is given [here](#jmeter).
