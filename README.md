@@ -1,24 +1,52 @@
 
-Original NGINX Documentation is available at http://nginx.org
+Original NGINX Documentation is available at http://nginx.org.
+This is an extension of NGINX which implements load balancing for multiversioned services.
 
-# Description
+# Table of Contents
+- [Concept Introduction](#intro)
+  - [Description](#desc)
+  - [Multiversioning Background](#mv-logic)
+  - [Defining Performance Target](#pt)
+- [Getting Started with Project](#start)
+  - [Setting Up](#setup)
+  - [Load Balancing Configuration](#lb-config)
+  - [Evaluating Version Utilization](#utilization)
+- [Project Logic](#logic)
+  - [Source Code Modifications](#src-code)
+  - [Load Balancing Calculations](#lb-math)
+  - [Load Balancing Logic](#lb-logic)
+
+<a name="intro"/>
+
+# Intro
+
+<a name="desc"/>
+
+## Description
 This is an extension of NGINX Open Source which has replaced the default round robin load balancing scheme with a custom scheme that is made specifically to load balance between multiversioned software.
 At the current stage of development, the load balancing is supported for software with 1 Heavy-weight version and 1 Light-weight version. The heavy version is the regular "full" service of the application and the light version provides the same service at a reduced quality. 
 
 
+<a name="mv-logic"/>
 
-# Logic Behind Multi-versioning
+## Logic Behind Multi-versioning
 Typically if the current resources of the system and the number of service deploymenets are insufficient to support the current load on the service without violating the response time SLA (Service Level Agreement), then the service would be scaled up. However, this may become costly to keep scaling up whenever the load exceeds current capacity. An alternative is to have a second version of the service which provides lower quality service, but it is able to handle much larger loads given the same number of resources and deployments. In this manner, clients can recieve timely service without the service provider from having to incur unmanagable costs. For more information about this type of multiversioning and its benefits, you can refer to a research paper that this project closely follows:
 A framework for satisfying the performance requirements of containerized software systems through multi-versioning - http://dx.doi.org/10.1145/3358960.3379125.
 
 You may also refer to the source code for the project developed in this paper whose purpose is to extend the Docker containerization framework to multiversioned microservice deployment. It has been added to this project here: [DockerMV](https://github.com/prabjot09/nginx-dynamic-load-balancing/tree/main/DockerMV_SaraGholami)
 
+<a name="pt"/>
 
-# Definition of Performance Target:
+## Definition of Performance Target:
 The SLA (Service Level Agreement) specifies an upper-bound on the response-time that requests can have which ensures users recieve timely responses. The term referred to as the "performance target (pt)" in this program is exactly this desired upper bound. The load balancing will aim to keep the p90/p95/p99 response-times as close to this performance target as possible.
 
+<a name="start"/>
 
-# Set-up Instructions on Linux:
+# Getting Started with Project:
+
+<a name="setup"/>
+
+## Set-up Instructions on Linux:
 1. Install a C compiler such as GCC. Use the command `gcc -v` to verify it is correctly installed.
 2. Clone this repository to your desired directory.
 3. Open the terminal and change your current directory to the root folder of the cloned repository.
@@ -32,7 +60,9 @@ The SLA (Service Level Agreement) specifies an upper-bound on the response-time 
 
 
 
-# Configuring the Load Balancer:
+<a name="lb-config"/>
+
+## Configuring the Load Balancer:
 1. From the root directory go to `./conf` directory and open the `nginx.conf` file.
 2. Inside the `http` block there is a block called `upstream backend` with a list of servers. Change the server configuration as follows:
   - Identify the IP address and port of your heavy-weight version of the service you have already deployed on some server. Replace that with the first line in the `upstream backend` block. Change the weight parameter to 2.
@@ -47,14 +77,20 @@ The SLA (Service Level Agreement) specifies an upper-bound on the response-time 
 6. If your NGINX is currently running, use `sudo nginx -s reload` to update the configuration at run-time. Otherwise, use `sudo nginx` to start up the load balancer.
 
 
+<a name="utilization"/>
 
-# Evaluating Service Utilization:
+## Evaluating Version Utilization:
 In order to evaluate how the system is responding to the current load, a script has been created which will output in real-time the number of requests that each version of the service has recieved and the percent of request recieved by the heavy-weight version (in other words, the percent of requests given full service). The script can be found here: [proportion.sh](https://github.com/prabjot09/nginx-dynamic-load-balancing/blob/main/proportion.sh)
 To run the script use this command from the root directory of this repository: `sh proportion.sh`.
 This script is meant to be run while the load balancer is running and is recieving some load to evaluate its effectiveness in balancing performance (minimizing response times) and service quality (maximizing requests run by heavy-weight version).
 
-  
-# Source Code Modifications:
+<a name="logic"/>
+
+# Project Logic
+
+<a name="src-code"/>
+   
+## Source Code Modifications:
 The original NGINX source code has been modified in 3 main ways.
 1. New data structures have been created to represent the service versions and relevant metrics used to perform the new load balancing.
 2. The replacement of the Round Robin load balancing algorithm with the custom load balancing technique defined in this project done in **./src/http/ngx_http_upstream_round_robin.c**.
@@ -83,7 +119,9 @@ The specific modifications and assoicated source code files are listed below:
 
 
 
-# Load Balancing Setup/Calculations:
+<a name="lb-math"/>
+
+## Load Balancing Setup/Calculations:
 This set up generates 2 values ($p$ and $t$ which are used for the load balancing logic).
 1. **Response Time Prediction**: For each incoming request the load balancer predicts the response time if the request were to be executed on the heavy-weight version. We denote this predicted time with $p$. 
    1. **Estimate the Average Request Load**: In order to perform the afformentioned prediction, the model first estimates the load that a single request puts on the service. This is calculated each time a request is completed to maintain an updated estimate. The logic behind the calculation is that if a request takes $X$ time to be processed by the service, and the service had responded to $Y$ requests in this duration, then on average each request takes $(X / Y)$ time to be executed. This can be considered the 'load' of a single request. Thus, this gives the following calculation (t = response time, $r_f$ = Requests Complete Now, $r_i$ = Requests Complete on Arrival, $a$ = Average Request Load): $$a = {{t} \over {r_f - r_i}}$$.
@@ -94,7 +132,9 @@ This set up generates 2 values ($p$ and $t$ which are used for the load balancin
    2. **Oldest Active Request**: Given the above request queue, if we remove elements from the queue until the first element has a non-NULL arrival time, then the first element (if any left) will be the arrival time of the oldest request. By comparing it with the current time the load balancer calculates the elapsed time since the requests arrival. This time is referred to as $t$.
 
 
-# Load Balancing Logic:
+<a name="lb-logic"/>
+
+## Load Balancing Logic:
 For the explaination behind the variables used in this section refer to the previous section on **Load Balancing Setup/Calculations.**
 Note: As mentioned earlier $pt$ refers to the performance target (i.e. the upper bound for the response time specified in the SLA).
 1. If $p \ge pt$, send request to light-weight version of service.
