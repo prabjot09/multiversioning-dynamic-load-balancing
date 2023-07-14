@@ -182,7 +182,7 @@ The following are the steps required to execute the test:
 
 7. Note the port of the heavy-weight version underlined in blue (let's call this 'PORT_H') and note the port of the light-weight version underlined in green (let's call this 'PORT_L').
 8. Switch the current working directory to the root directory of this repository. Then, open the file `conf/nginx.conf`
-9. Edit the `upstream` block in the file to correctly configure the load balancer by following the given format and replace the parameters <...> with information specific for you. Further guidance for this can be found [here](#lb-config).
+9. Edit the `upstream` block in the file to correctly configure the load balancer by following the given format and replace the parameters <...> with information specific for you (pt=500 is recommended). Further guidance for this can be found [here](#lb-config).
     
 ``
 upstream backend {
@@ -223,7 +223,7 @@ The steps to execute the tests are as follows:
      1. ``sudo docker run -e "REGISTRY_HOST=<HOST_IP> -e "REGISTRY_PORT=10000 -e "HOST_NAME=<HOST_IP> -e "SERVICE_PORT=<LB_PORT>" -p <PORT1>:8080 -d sgholami/teastore-recommender:SingleTrain``
      2. ``sudo docker run -e "REGISTRY_HOST=<HOST_IP> -e "REGISTRY_PORT=10000 -e "HOST_NAME=<HOST_IP> -e "SERVICE_PORT=<LB_PORT>" -p <PORT2>:8080 -d sgholami/teastore-recommender:MultipleTrain``
   5. Switch the current working directory to the root directory of this repository. Then, open the file `conf/nginx.conf`
-  6. Edit the `upstream` block in the file to correctly configure the load balancer by following the given format and replace the parameters <...> with information specific for you. Further guidance for this can be found [here](#lb-config).
+  6. Edit the `upstream` block in the file to correctly configure the load balancer by following the given format and replace the parameters <...> with information specific for you (pt=50 is recommended). Further guidance for this can be found [here](#lb-config).
     
 ``
 upstream backend {
