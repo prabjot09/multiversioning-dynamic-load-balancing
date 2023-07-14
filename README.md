@@ -71,7 +71,7 @@ The SLA (Service Level Agreement) specifies an upper-bound on the response-time 
   - For the second line repeat the previous step, except set the weight parameter to any number other than 2 (Example: 7)
 3. To configure the SLA (response-time performance target), add `pt=[resp_time_performance_target]` to the end of just ONE of the server lines that were updated in step 2.
 
-    After step (3), the result should look like this with the specifics of your set up replaced with the variables in '[..,]'
+    After step (3), the result should look like this with the specifics of your set up replaced with the variables in '[...]'
     ![image](https://github.com/prabjot09/nginx-dynamic-load-balancing/assets/77180065/512fbafc-85f2-4227-a39f-cc4766e00ad8)
 
 4. [Option - Default port is 3333] You can change the port than NGINX will run on in the same file. Inside the `http` block there is a block `server`. Within the `server` block change the number beside `listen` to your desired port.
