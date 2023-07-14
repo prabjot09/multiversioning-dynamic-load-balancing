@@ -17,6 +17,9 @@ This is an extension of NGINX which implements load balancing for multiversioned
   - [Load Balancing Logic](#lb-logic)
 - [Testing the Project](#test)
   - [Test Using ZNN News Service](#znn)
+  - [Test Using Teastore Recommender Service](#teastore)
+  - [Load Testing Using JMeter](#jmeter)
+- [Shutdown and Cleanup](#close)
 
 <a name="intro"/>
 
@@ -171,7 +174,7 @@ The following are the steps required to execute the test:
 
 ``sudo docker run --network="my-net" -d -p 3306:3306 alirezagoli/znn-mysql:v1``
 
-``./build/docker service create <HOST_IP> my-net my_znn 1081 $HOME/DockerMV/znn_sample_rule.txt alirezagoli/znn-text:v1 1 1g 1g 0.2 alirezagoli/znn-multimedia:v1 1 1g 1g 0.2``
+``sudo ./build/docker service create <HOST_IP> my-net my_znn 1081 $HOME/DockerMV/znn_sample_rule.txt alirezagoli/znn-text:v1 1 1g 1g 0.2 alirezagoli/znn-multimedia:v1 1 1g 1g 0.2``
 
 6. Run the following command to identify the ports associated with each version that has been launched: `sudo docker container ls`. The output should look similar to the image below.
 
@@ -191,4 +194,81 @@ upstream backend {
 10. Inside the `server` block change the number listed beside `listen` to the port that you want the load balancer to run on (This port must not be already in use). Let's call this port `LB_PORT`
 11. Save the file and use the following command to apply the configuration: `sudo cp ./conf/nginx.conf /etc/nginx/nginx.conf`
 12. Run the load balancer with the command: `sudo nginx`. If the service is already running, then use `sudo nginx -s reload` to restart it.
-13. Now you can use a load testing application by sending requests to `http://<HOST_IP>:<NGINX_PORT>/news.php`. A guide on load testing with the JMeter application is given [here](#jmeter).
+13. Now you can use a load testing application by sending requests to `http://<HOST_IP>:<LB_PORT>/news.php`. A guide on load testing with the JMeter application is given [here](#jmeter).
+
+<a name="teastore"/>
+
+## Testing with Teastore Recommender Service
+**Note**: This experiment requires the installation of Docker which is part of the setup for DockerMV. Although DockerMV is not required for this test, please follow the steps in the "How to Use?" section of the README file in DockerMV which outlines how to install Docker. The README file can be found in the `DockerMV_SaraGholami` folder in the root directory of this repo.
+
+This service has 2 versions: 
+1. `teastore-recommender:SingleTrain`: This version runs the training algorithm for product recommendation just once. This reduces the accuracy of the predictions, but lightens the load on the service.
+2. `teastore-recommender:MultipleTrain`: This version runs the training algorithm for product recommendations periodically, which increases prediction accuracy, but places a larger load on the service.
+
+The steps to execute the tests are as follows:
+1. Ensure that Docker has been installed on the system. If not, refer to the **Note** at the beginning of this section.
+2. Since the teastore application is made of many individual microservices, we need to launch all associated services, not just the product recommendation service. To launch all the required services run the following commands (replace <HOST_IP> with the IP address of the host system that the service is deployed on which can be found by running this command: `hostname -I | awk '{print $1}`). For further details on how these commands work and any manual adjustments you'd like to make refer to the Teastore application documentation [here](https://github.com/DescartesResearch/TeaStore/blob/master/GET_STARTED.md#11-run-as-multiple-single-service-containers):
+   1. ``sudo docker run -e "HOST_NAME=<HOST_IP>" -e "SERVICE_PORT=10000" -p 10000:8080 -d descartesresearch/teastore-registry``
+   2. ``sudo docker run -p 3306:3306 -d descartesresearch/teastore-db``
+   3. ``sudo docker run -e "REGISTRY_HOST=<HOST_IP>" -e "REGISTRY_PORT=10000" -e "HOST_NAME=<HOST_IP>" -e "SERVICE_PORT=1111" -e "DB_HOST=<HOST_IP>" -e "DB_PORT=3306" -p 1111:8080 -d descartesresearch/teastore-persistence``
+   4. ``sudo docker run -e "REGISTRY_HOST=<HOST_IP>" -e "REGISTRY_PORT=10000" -e "HOST_NAME=<HOST_IP>" -e "SERVICE_PORT=2222" -p 2222:8080 -d descartesresearch/teastore-auth``
+   5. ``sudo docker run -e "REGISTRY_HOST=<HOST_IP>" -e "REGISTRY_PORT=10000" -e "HOST_NAME=<HOST_IP>" -e "SERVICE_PORT=4444" -p 4444:8080 -d descartesresearch/teastore-image``
+   6. ``sudo docker run -e "REGISTRY_HOST=<HOST_IP>" -e "REGISTRY_PORT=10000" -e "HOST_NAME=<HOST_IP>" -e "SERVICE_PORT=8080" -p 8080:8080 -d descartesresearch/teastore-webui``
+  **Note**: [Changing Hosts] You may launch these services on different devices/hosts, but ensure that the <HOST_IP> matches the IP of the device the service is launched for.
+  **Note2**: [Changing Port 1] You may change the port for the 1st service, however you must change the `REGISTRY_PORT` of services (3)-(6) to match this change.
+  **Note3**: [Changing Port 2] You may change the port for the 2nd service, however you must change the `DB_PORT` of service (3) to match the change.
+  **Note4**: [Changing ANY Port] You may change the port for any service, however you must update the `SERVICE_PORT` of the same service to match the port specified after the `-p` option.
+  3. Choose a port that is currently unused by the host. If in the later steps you find that the port is in use, please restart from this step. We will refer to this port as <LB_PORT>. 
+  4. Launch the 2 versions of the recommender service with the following commands. <PORT1> and <PORT2> must not be already in use. Please ensure that the `REGISTRY_HOST` and `REGISTRY_PORT` match those in step (2):
+     1. ``sudo docker run -e "REGISTRY_HOST=<HOST_IP> -e "REGISTRY_PORT=10000 -e "HOST_NAME=<HOST_IP> -e "SERVICE_PORT=<LB_PORT>" -p <PORT1>:8080 -d sgholami/teastore-recommender:SingleTrain``
+     2. ``sudo docker run -e "REGISTRY_HOST=<HOST_IP> -e "REGISTRY_PORT=10000 -e "HOST_NAME=<HOST_IP> -e "SERVICE_PORT=<LB_PORT>" -p <PORT2>:8080 -d sgholami/teastore-recommender:MultipleTrain``
+  5. Switch the current working directory to the root directory of this repository. Then, open the file `conf/nginx.conf`
+  6. Edit the `upstream` block in the file to correctly configure the load balancer by following the given format and replace the parameters <...> with information specific for you. Further guidance for this can be found [here](#lb-config).
+    
+``
+upstream backend {
+    server <HOST_IP>:<PORT2> weight=2 pt=<user_defined_performance_target>;
+    server <HOST_IP>:<PORT1> weight=7;
+}
+``
+
+10. Inside the `server` block change the number listed beside `listen` to <LB_PORT>
+11. Save the file and use the following command to apply the configuration: `sudo cp ./conf/nginx.conf /etc/nginx/nginx.conf`
+12. Run the load balancer with the command: `sudo nginx`. If the service is already running, then use `sudo nginx -s reload` to restart it.
+13. Test that the service is running correctly by going to the UI for the service at `http://<HOST_IP>:<WEBUI_PORT>` and clicking on Server Status. The <WEBUI_PORT> is the port used in step (2.6) which should be 8080 if you have used the same setup in the instructions.
+14. Now you can use a load testing application by sending various requests to `http://<HOST_IP>:<WEBUI_PORT>`. There is a lot more content and complexity involved with the Teastore service, since the recommender service is used by the system, but isn't directly accessible to the user. For this reason, we recommend sticking with the load testing scheme that has been provided using JMeter. A guide on load testing with the JMeter application is given [here](#jmeter).
+
+<a name="jmeter"/>
+
+## Load Testing with JMeter
+JMeter is an application that uses Java 8 to simulate loads on servers. The following are the steps to set up JMeter.
+1. Install Java 8+ on the host that you want to run JMeter on. This does not necessarily need to be the same host where the services to be tested are launched.
+2. Install Apache JMeter from an archive of their releases. We used Apache JMeter 5.5 however more recent releases should work fine as well. The releases can be found [here](https://archive.apache.org/dist/jmeter/binaries/) and download the .zip file of your preferred release. The release for JMeter 5.5 is found [here](https://archive.apache.org/dist/jmeter/binaries/apache-jmeter-5.5.zip). In the case that these links become obsolete, please go to the official site of Apache JMeter and try to find the 'Download Releases' section where you may find instructions to help you.
+3. Extract the contents of the .zip file to your preferred directory.
+4. Open a terminal and navigate to the root directory of the extracted contents which should be called `apache-jmeter-<version>`.
+5. Navigate to the /bin folder and execute the command to launch the load testing UI: ``./jmeter``
+6. Once JMeter is launched, on the navigation bar at the top select File->Open.
+7. Now find the .jmx file you want to use to perform the load test. There are 2 default test files you can download that are provided in the root directory of DockerMV for each of the tested services. The ZNN test file can be found [here](https://github.com/pacslab/DockerMV/blob/master/znn.jmx) and the Teastore test file can be found [here](https://github.com/pacslab/DockerMV/blob/master/teastore.jmx).
+8. Ensure that the host and ports for the test case are set to the match the service you'd like to test. In the case of the ZNN service requests should be sent to `http://<HOST_IP>:<LB_PORT>`. In the case of the Teastore service requests should be sent to `http://<HOST_IP>:<WEBUI_PORT>`
+   1. If using the **znn.jmx** test file, using the navigation panel on the left, navigate to 'Test Plan' -> 'Threads' -> 'HTTP Request' to configure the IP address and Port Number. Navigate to 'Test Plan' -> 'Threads' to configure the amount of load and the duration of the load tests.
+   2. If using the **teastore.jmx** test file, using the navigation panel on the left, navigate to 'Teastore' and set all relevant parameters in the `User Defined Variables` selection on the right.
+9. Save the file after making all the necessary changes and close (not minimize) the UI.
+10. From the same terminal as before run the following command to execute the load tests. Any path and file/folder name will work as long as the directory specified in the path exists, however the name and path of <TEST_FILE> must be the same as the file edited in step (8) :
+
+``./jmeter -n -t ./<path-to-file>/<TEST_FILE>.jmx -l ./<path-to-file>/<file_name>.csv -e -o ./<path-to-folder>/<results folder>``
+
+11. The results of the test will be output in the terminal as it executes. To run an additional script to see how the load balancer is distributing requests, refer to this [section](#utilization).
+12. To view the results in visual form, navigate to the folder specified in step (10) and open the index.html file. Results of particular interest can be found under the 'Charts->Over Time' section and particular from the 'Response Time Percentiles Over Time (successful responses)' graph.
+
+
+<a name="close"/>
+
+# Shutdown and Cleanup
+1. To close all active docker containers that have been launched use the command: `sudo docker container ls -aq | xargs sudo docker stop | xargs sudo docker rm`.
+2. To close a specific docker container follow these steps:
+   1. Use the command `sudo docker container ls`. Find the container you'd like to shutdown from the names in the `IMAGES` column, and copy its hash in the `CONTAINER ID` column. Let's call this <CONTAINER_ID>.
+   2. Run this command to pause the container: `sudo docker stop <CONTAINER_ID>`.
+   3. Run this command to delete the container: `sudo docker rm <CONTAINER_ID>`.
+3. Run this command to stop the load balancer: `sudo nginx -s stop`.
+
+
