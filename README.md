@@ -133,11 +133,11 @@ The specific modifications and assoicated source code files are listed below:
 ## Load Balancing Setup/Calculations:
 This set up generates 2 values (*p* and *t* which are used for the load balancing logic).
 1. **Response Time Prediction**: For each incoming request the load balancer predicts the response time if the request were to be executed on the heavy-weight version. We denote this predicted time with *p*. 
-   1. **Estimate the Average Request Load**: In order to perform the afformentioned prediction, the model first estimates the load that a single request puts on the service. This is calculated each time a request is completed to maintain an updated estimate. The logic behind the calculation is that if a request takes *X* time to be processed by the service, and the service had responded to *Y* requests in this duration, then on average each request takes *(X / Y)* time to be executed. This can be considered the 'load' of a single request. Thus, this gives the following calculation (*t* = response time, *r<sub>f* = Requests Complete Now, *r<sub>i* = Requests Complete on Arrival, *a* = Average Request Load):
+   1. **Estimate the Average Request Load**: In order to perform the afformentioned prediction, the model first estimates the load that a single request puts on the service. This is calculated each time a request is completed to maintain an updated estimate. The logic behind the calculation is that if a request takes *X* time to be processed by the service, and the service had responded to *Y* requests in this duration, then on average each request takes *(X / Y)* time to be executed. This can be considered the 'load' of a single request. Thus, this gives the following calculation (Variable Definitions: *t* = response time, *r<sub>f* = No. of Requests Completed Now, *r<sub>i* = No. of Requests Completed on Arrival, *a* = Average Request Load):
       
       <img src="https://latex.codecogs.com/svg.image?&space;a={{t}\over{r_f-r_i}}" title=" a={{t}\over{r_f-r_i}}" />
 
-   2. **Exponential Smoothing**: To ensure that both recent and old response data is incorporated exponential smoothing is used each time the average request load is updated. By defining the overall estimate for the average request load as *e*, then we can calculate the exponentially smoothed average request load as (*e<sub>i* = The estimate of request load before the update, *e<sub>f* = the updated estimated, *a* = The calculation from the previous step, &alpha; = exponential smoothing factor):
+   2. **Exponential Smoothing**: To ensure that both recent and old response data is incorporated appropriately into this estimate, exponential smoothing is used each time the average request load is updated. By defining the overall estimate for the average request load as *e*, we can calculate the exponentially smoothed average request load as (Variable Definitions: *e<sub>i* = The estimate of request load before the update, *e<sub>f* = the updated estimated, *a* = The calculation from the previous step, &alpha; = exponential smoothing factor):
    
       <img src="https://latex.codecogs.com/svg.image?\inline&space;e_f=(1-\alpha)\*e_i&plus;\alpha*{a}" />
 
@@ -148,8 +148,8 @@ This set up generates 2 values (*p* and *t* which are used for the load balancin
       <img src="https://latex.codecogs.com/svg.image?p=e_f(n+1)" />
       
 3. **Current Load Management**: The load balancer keeps track of all active requests and how long it has been since the request arrived. We denote the active duration of the oldest active request as *t*.
-   1. **Request Queue**: A linked list data structure associated with each service version containing all active requests on that service starting from the oldest to the newest. As new requests arrive, their arrival time is recorded at the end of the queue. As requests are completed, their arrival times are set to NULL.
-   2. **Oldest Active Request**: Given the above request queue, if we remove elements from the queue until the first element has a non-NULL arrival time, then the first element (if any left) will be the arrival time of the oldest request. By comparing it with the current time the load balancer calculates the elapsed time since the requests arrival. This time is referred to as *t*.
+   1. **Request Queue**: A linked list data structure associated with each service version containing all active requests on that version starting from the oldest to the newest. As new requests arrive, their arrival time is recorded at the end of the queue. As requests are completed, their arrival times are set to NULL.
+   2. **Retrieving Oldest Active Request**: Given the above request queue, we remove elements from the start of the queue until the first element has a non-NULL arrival time. Then the first element (if list is non-empty) will be the arrival time of the oldest request. By comparing it with the current time, the load balancer calculates the elapsed time since the requests arrival. This time is referred to as *t*.
 
 
 <a name="lb-logic"/>
@@ -160,7 +160,7 @@ Note: As mentioned earlier *pt* refers to the performance target (i.e. the upper
 1. If *p &ge; pt*, send request to light-weight version of service.
 2. If *(t + e<sub>f* *) &ge; pt*, send request to light-weight version of service.
 3. Otherwise, send request to heavy-weight version of service.
-Reasoning: If either we predict the request to exceed the performance target (response time upper bound) if sent to the heavy-weight version or that the current load on the heavy-weight version exceeds the performance target, then the current system load is too high to give the request full service. However, when neither of these conditions are violated, then the load on the system is considered low enought that we can safely provide full service for this request.
+Reasoning: If either we predict the request to exceed the performance target (response time upper bound) if sent to the heavy-weight version or that the current load on the heavy-weight version exceeds the performance target, then the current system load is too high to give the request full service. However, when neither of these conditions are violated, then the load on the system is considered low enough that we can safely provide full service for this request.
 
 ___
 <a name="test"/>
@@ -185,24 +185,24 @@ The following are the steps required to execute the test:
 4. From this directory, open a terminal and run this command: `hostname -I | awk '{print $1}'`. The output is your IP address and it will be referred to as <HOST_IP>
 5. Run the following commands without changing the current directory. Replace <HOST_IP> with the output recieved above. If the DockerMV program is not located in the $HOME directory, please replace '$HOME' with the path to the directory:
 
-``sudo docker run --network="my-net" -d -p 3306:3306 alirezagoli/znn-mysql:v1``
+   ``sudo docker run --network="my-net" -d -p 3306:3306 alirezagoli/znn-mysql:v1``
 
-``sudo ./build/docker service create <HOST_IP> my-net my_znn 1081 $HOME/DockerMV/znn_sample_rule.txt alirezagoli/znn-text:v1 1 1g 1g 0.2 alirezagoli/znn-multimedia:v1 1 1g 1g 0.2``
+   ``sudo ./build/docker service create <HOST_IP> my-net my_znn 1081 $HOME/DockerMV/znn_sample_rule.txt alirezagoli/znn-text:v1 1 1g 1g 0.2 alirezagoli/znn-multimedia:v1 1 1g 1g 0.2``
 
 6. Run the following command to identify the ports associated with each version that has been launched: `sudo docker container ls`. The output should look similar to the image below.
 
-![image](https://github.com/prabjot09/multiversioning-dynamic-load-balancing/assets/77180065/e0fd7aa3-7089-4f65-a492-f80dd1ae41be)
+   ![image](https://github.com/prabjot09/multiversioning-dynamic-load-balancing/assets/77180065/e0fd7aa3-7089-4f65-a492-f80dd1ae41be)
 
-7. Note the port of the heavy-weight version underlined in blue (let's call this 'PORT_H') and note the port of the light-weight version underlined in green (let's call this 'PORT_L').
+7. Note the port of the heavy-weight version underlined in blue (let's call this 'PORT_H') and note the port of the light-weight version underlined in green (let's call this 'PORT_L') in your terminal.
 8. Switch the current working directory to the root directory of this repository. Then, open the file `conf/nginx.conf`
 9. Edit the `upstream` block in the file to correctly configure the load balancer by following the given format and replace the parameters <...> with information specific for you (pt=500 is recommended). Further guidance for this can be found [here](#lb-config).
     
-``
-upstream backend {
-    server <HOST_IP>:<PORT_H> weight=2 pt=<user_defined_performance_target>;
-    server <HOST_IP>:<PORT_L> weight=7;
-}
-``
+   ```
+   upstream backend {
+       server <HOST_IP>:<PORT_H> weight=2 pt=<user_defined_performance_target>;
+       server <HOST_IP>:<PORT_L> weight=7;
+   }
+   ```
 
 10. Inside the `server` block change the number listed beside `listen` to the port that you want the load balancer to run on (This port must not be already in use). Let's call this port `LB_PORT`
 11. Save the file and use the following command to apply the configuration: `sudo cp ./conf/nginx.conf /etc/nginx/nginx.conf`
@@ -220,59 +220,59 @@ This service has 2 versions:
 
 The steps to execute the tests are as follows:
 1. Ensure that Docker has been installed on the system. If not, refer to the **Note** at the beginning of this section.
-2. Since the teastore application is made of many individual microservices, we need to launch all associated services, not just the product recommendation service. To launch all the required services run the following commands (replace <HOST_IP> with the IP address of the host system that the service is deployed on which can be found by running this command: `hostname -I | awk '{print $1}`). For further details on how these commands work and any manual adjustments you'd like to make refer to the Teastore application documentation [here](https://github.com/DescartesResearch/TeaStore/blob/master/GET_STARTED.md#11-run-as-multiple-single-service-containers):
+2. Since the teastore application is made of many individual microservices, we need to launch all associated services, not just the product recommendation service. To launch all the required services run the following commands (replace <HOST_IP> with the IP address of the host system that the service is deployed on which can be found by running this command: `hostname -I | awk '{print $1}`). For further details on how these commands work and any manual adjustments you'd like to make, refer to the Teastore application documentation [here](https://github.com/DescartesResearch/TeaStore/blob/master/GET_STARTED.md#11-run-as-multiple-single-service-containers):
    1. ``sudo docker run -e "HOST_NAME=<HOST_IP>" -e "SERVICE_PORT=10000" -p 10000:8080 -d descartesresearch/teastore-registry``
    2. ``sudo docker run -p 3306:3306 -d descartesresearch/teastore-db``
    3. ``sudo docker run -e "REGISTRY_HOST=<HOST_IP>" -e "REGISTRY_PORT=10000" -e "HOST_NAME=<HOST_IP>" -e "SERVICE_PORT=1111" -e "DB_HOST=<HOST_IP>" -e "DB_PORT=3306" -p 1111:8080 -d descartesresearch/teastore-persistence``
    4. ``sudo docker run -e "REGISTRY_HOST=<HOST_IP>" -e "REGISTRY_PORT=10000" -e "HOST_NAME=<HOST_IP>" -e "SERVICE_PORT=2222" -p 2222:8080 -d descartesresearch/teastore-auth``
    5. ``sudo docker run -e "REGISTRY_HOST=<HOST_IP>" -e "REGISTRY_PORT=10000" -e "HOST_NAME=<HOST_IP>" -e "SERVICE_PORT=4444" -p 4444:8080 -d descartesresearch/teastore-image``
    6. ``sudo docker run -e "REGISTRY_HOST=<HOST_IP>" -e "REGISTRY_PORT=10000" -e "HOST_NAME=<HOST_IP>" -e "SERVICE_PORT=8080" -p 8080:8080 -d descartesresearch/teastore-webui``
-  **Note**: [Changing Hosts] You may launch these services on different devices/hosts, but ensure that the <HOST_IP> matches the IP of the device the service is launched for.
-  **Note2**: [Changing Port 1] You may change the port for the 1st service, however you must change the `REGISTRY_PORT` of services (3)-(6) to match this change.
-  **Note3**: [Changing Port 2] You may change the port for the 2nd service, however you must change the `DB_PORT` of service (3) to match the change.
-  **Note4**: [Changing ANY Port] You may change the port for any service, however you must update the `SERVICE_PORT` of the same service to match the port specified after the `-p` option.
+  <br/>**Note**: [Changing Hosts] You may launch these services on different devices/hosts, but ensure that the <HOST_IP> matches the IP of the device the service is launched for.
+  <br/>**Note2**: [Changing Port 1] You may change the port for the 1st service, however you must change the `REGISTRY_PORT` of services (3)-(6) to match this change.
+  <br/>**Note3**: [Changing Port 2] You may change the port for the 2nd service, however you must change the `DB_PORT` of service (3) to match the change.
+  <br/>**Note4**: [Changing ANY Port] You may change the port for any service, however you must update the `SERVICE_PORT` of the same service to match the port specified after the `-p` option.
   3. Choose a port that is currently unused by the host. If in the later steps you find that the port is in use, please restart from this step. We will refer to this port as <LB_PORT>. 
-  4. Launch the 2 versions of the recommender service with the following commands. <PORT1> and <PORT2> must not be already in use. Please ensure that the `REGISTRY_HOST` and `REGISTRY_PORT` match those in step (2):
+  4. Launch the 2 versions of the recommender service with the following commands. `<PORT1>` and `<PORT2>` must not be already in use. Please ensure that the `REGISTRY_HOST` and `REGISTRY_PORT` match those in step (2):
      1. ``sudo docker run -e "REGISTRY_HOST=<HOST_IP> -e "REGISTRY_PORT=10000 -e "HOST_NAME=<HOST_IP> -e "SERVICE_PORT=<LB_PORT>" -p <PORT1>:8080 -d sgholami/teastore-recommender:SingleTrain``
      2. ``sudo docker run -e "REGISTRY_HOST=<HOST_IP> -e "REGISTRY_PORT=10000 -e "HOST_NAME=<HOST_IP> -e "SERVICE_PORT=<LB_PORT>" -p <PORT2>:8080 -d sgholami/teastore-recommender:MultipleTrain``
   5. Switch the current working directory to the root directory of this repository. Then, open the file `conf/nginx.conf`
   6. Edit the `upstream` block in the file to correctly configure the load balancer by following the given format and replace the parameters <...> with information specific for you (pt=50 is recommended). Further guidance for this can be found [here](#lb-config).
-    
-``
-upstream backend {
-    server <HOST_IP>:<PORT2> weight=2 pt=<user_defined_performance_target>;
-    server <HOST_IP>:<PORT1> weight=7;
-}
-``
 
-10. Inside the `server` block change the number listed beside `listen` to <LB_PORT>
-11. Save the file and use the following command to apply the configuration: `sudo cp ./conf/nginx.conf /etc/nginx/nginx.conf`
-12. Run the load balancer with the command: `sudo nginx`. If the service is already running, then use `sudo nginx -s reload` to restart it.
-13. Test that the service is running correctly by going to the UI for the service at `http://<HOST_IP>:<WEBUI_PORT>` and clicking on Server Status. The <WEBUI_PORT> is the port used in step (2.6) which should be 8080 if you have used the same setup in the instructions.
-14. Now you can use a load testing application by sending various requests to `http://<HOST_IP>:<WEBUI_PORT>`. There is a lot more content and complexity involved with the Teastore service, since the recommender service is used by the system, but isn't directly accessible to the user. For this reason, we recommend sticking with the load testing scheme that has been provided using JMeter. A guide on load testing with the JMeter application is given [here](#jmeter).
+   ```
+   upstream backend {
+     server <HOST_IP>:<PORT2> weight=2 pt=<user_defined_performance_target>;
+     server <HOST_IP>:<PORT1> weight=7;
+   }
+   ```
+
+7. Inside the `server` block change the number listed beside `listen` to <LB_PORT>
+8. Save the file and use the following command to apply the configuration: `sudo cp ./conf/nginx.conf /etc/nginx/nginx.conf`
+9. Run the load balancer with the command: `sudo nginx`. If the service is already running, then use `sudo nginx -s reload` to restart it.
+10. Test that the service is running correctly by going to the UI for the service at `http://<HOST_IP>:<WEBUI_PORT>` and clicking on Server Status. The <WEBUI_PORT> is the port used in step (2.6) which should be 8080 if you have used the same setup in the instructions.
+11. Now you can use a load testing application by sending various requests to `http://<HOST_IP>:<WEBUI_PORT>`. There is a lot more content and complexity involved with the Teastore service, since the recommender service is used by the system, but isn't directly accessible to the user. For this reason, we recommend sticking with the load testing scheme that has been provided using JMeter. A guide on load testing with the JMeter application is given [here](#jmeter).
 
 <a name="jmeter"/>
 
 ## Load Testing with JMeter
 JMeter is an application that uses Java 8 to simulate loads on servers. The following are the steps to set up JMeter.
 1. Install Java 8+ on the host that you want to run JMeter on. This does not necessarily need to be the same host where the services to be tested are launched.
-2. Install Apache JMeter from an archive of their releases. We used Apache JMeter 5.5 however more recent releases should work fine as well. The releases can be found [here](https://archive.apache.org/dist/jmeter/binaries/) and download the .zip file of your preferred release. The release for JMeter 5.5 is found [here](https://archive.apache.org/dist/jmeter/binaries/apache-jmeter-5.5.zip). In the case that these links become obsolete, please go to the official site of Apache JMeter and try to find the 'Download Releases' section where you may find instructions to help you.
+2. Install Apache JMeter from an archive of their releases. We used Apache JMeter 5.5, however more recent releases should work fine as well. The releases can be found [here](https://archive.apache.org/dist/jmeter/binaries/). Download the .zip file of your preferred release. The release for JMeter 5.5 is found [here](https://archive.apache.org/dist/jmeter/binaries/apache-jmeter-5.5.zip). In the case that these links become obsolete, please go to the official site of Apache JMeter and try to find the 'Download Releases' section where you may find instructions to help you.
 3. Extract the contents of the .zip file to your preferred directory.
 4. Install the JMeter plugins manager by following the instructions [here](https://jmeter-plugins.org/install/Install/). The restart is not required since we haven't started JMeter yet.
-5. Open a terminal and navigate to the root directory of the extracted contents which should be called `apache-jmeter-<version>`.
+5. Open a terminal and navigate to the root directory of the extracted contents which should be in a folder called `apache-jmeter-<version>`.
 6. Navigate to the /bin folder and execute the command to launch the load testing UI: ``./jmeter``
-7. Once JMeter is launched, on the navigation bar at the top select File->Open.
+7. Once JMeter is launched, on the navigation bar at the top select: File->Open.
 8. Now find the .jmx file you want to use to perform the load test. There are 2 default test files you can download that are provided in the root directory of DockerMV for each of the tested services. The ZNN test file can be found [here](https://github.com/pacslab/DockerMV/blob/master/znn.jmx) and the Teastore test file can be found [here](https://github.com/pacslab/DockerMV/blob/master/teastore.jmx).
-9. Ensure that the host and ports for the test case are set to the match the service you'd like to test. In the case of the ZNN service requests should be sent to `http://<HOST_IP>:<LB_PORT>`. In the case of the Teastore service requests should be sent to `http://<HOST_IP>:<WEBUI_PORT>`
+9. Ensure that the host and ports for the test case are set to match the service you'd like to test. In the case of the ZNN service, requests should be sent to `http://<HOST_IP>:<LB_PORT>`. In the case of the Teastore service, requests should be sent to `http://<HOST_IP>:<WEBUI_PORT>`
    1. If using the **znn.jmx** test file, using the navigation panel on the left, navigate to 'Test Plan' -> 'Threads' -> 'HTTP Request' to configure the IP address and Port Number. Navigate to 'Test Plan' -> 'Threads' to configure the amount of load and the duration of the load tests.
    2. If using the **teastore.jmx** test file, using the navigation panel on the left, navigate to 'Teastore' and set all relevant parameters in the `User Defined Variables` selection on the right.
-10. Save the file after making all the necessary changes and close (not minimize) the UI.
+10. Save the file after making all the necessary changes and close (*NOT* minimize) the UI.
 11. From the same terminal as before run the following command to execute the load tests. Any path and file/folder name will work as long as the directory specified in the path exists, however the name and path of <TEST_FILE> must be the same as the file edited in step (8) :
 
-``./jmeter -n -t ./<path-to-file>/<TEST_FILE>.jmx -l ./<path-to-file>/<file_name>.csv -e -o ./<path-to-folder>/<results folder>``
+    ``./jmeter -n -t ./<path-to-file>/<TEST_FILE>.jmx -l ./<path-to-file>/<file_name>.csv -e -o ./<path-to-folder>/<results_folder>``
 
-11. The results of the test will be output in the terminal as it executes. To run an additional script to see how the load balancer is distributing requests, refer to this [section](#utilization).
-12. To view the results in visual form, navigate to the folder specified in step (10) and open the index.html file. Results of particular interest can be found under the 'Charts->Over Time' section and particular from the 'Response Time Percentiles Over Time (successful responses)' graph.
+12. The results of the test will be output in the terminal as it executes. To run an additional script to see how the load balancer is distributing requests, refer to this [section](#utilization).
+13. [**After Test Completion**] To view the results in visual form, navigate to the folder specified in step (11) and open the index.html file. Results of particular interest can be found under the 'Charts->Over Time' section, especially from the 'Response Time Percentiles Over Time (successful responses)' graph.
 
 ___
 <a name="close"/>
