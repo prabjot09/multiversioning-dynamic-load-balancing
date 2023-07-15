@@ -130,28 +130,37 @@ The specific modifications and assoicated source code files are listed below:
 5. **./src/http/modules/ngx_http_log_module.c**
    1. Modified the `ngx_http_log_request_time()` method to log additional relevant information for each request such as the prediction made by the load balancing technique, the no. of active requests, the version of the service that responded to this request, arrival time, etc. It also includes the calculation done to update the prediction scheme based on the response time logs of the most recently completed request.
 
-
-
 <a name="lb-math"/>
 
 ## Load Balancing Setup/Calculations:
-This set up generates 2 values ($p$ and $t$ which are used for the load balancing logic).
-1. **Response Time Prediction**: For each incoming request the load balancer predicts the response time if the request were to be executed on the heavy-weight version. We denote this predicted time with $p$. 
-   1. **Estimate the Average Request Load**: In order to perform the afformentioned prediction, the model first estimates the load that a single request puts on the service. This is calculated each time a request is completed to maintain an updated estimate. The logic behind the calculation is that if a request takes $X$ time to be processed by the service, and the service had responded to $Y$ requests in this duration, then on average each request takes $(X / Y)$ time to be executed. This can be considered the 'load' of a single request. Thus, this gives the following calculation (t = response time, $r_f$ = Requests Complete Now, $r_i$ = Requests Complete on Arrival, $a$ = Average Request Load): $$a = {{t} \over {r_f - r_i}}$$.
-   2. **Exponential Smoothing**: To ensure that both recent and old response data is incorporated exponential smoothing is used each time the average request load is updated. By defining the overall estimate for the average request load as $e$, then we can calculate the exponentially smoothed average request load as ($e_i$ = The estimate of request load before the update, $e_f$ = the updated estimated, $a$ = The calculation from the previous step, $\alpha$ = exponential smoothing factor): $$e_f = (1-\alpha)\*e_i + \alpha\*{a}$$. This $e_f$ is the new value for the average request load.
-   3. **Load Prediction**: From the previous calculation we know that the average time to execute a request is estimated to be $e_f$. If the number of active requests is $n$, then we can predict the response time of an incoming request to be the time to finish all active requests plus the incoming request. The predicted response time $p$ can be defined as: $$p = e_f \* (n+1)$$
-2. **Current Load Management**: The load balancer keeps track of all active requests and how long it has been since the request arrived. We denote the active duration of the oldest active request as $t$.
+This set up generates 2 values (*p* and *t* which are used for the load balancing logic).
+1. **Response Time Prediction**: For each incoming request the load balancer predicts the response time if the request were to be executed on the heavy-weight version. We denote this predicted time with *p*. 
+   1. **Estimate the Average Request Load**: In order to perform the afformentioned prediction, the model first estimates the load that a single request puts on the service. This is calculated each time a request is completed to maintain an updated estimate. The logic behind the calculation is that if a request takes *X* time to be processed by the service, and the service had responded to *Y* requests in this duration, then on average each request takes *(X / Y)* time to be executed. This can be considered the 'load' of a single request. Thus, this gives the following calculation (*t* = response time, *r<sub>f* = Requests Complete Now, *r<sub>i* = Requests Complete on Arrival, *a* = Average Request Load):
+      
+      <img src="https://latex.codecogs.com/svg.image?&space;a={{t}\over{r_f-r_i}}" title=" a={{t}\over{r_f-r_i}}" />
+
+   2. **Exponential Smoothing**: To ensure that both recent and old response data is incorporated exponential smoothing is used each time the average request load is updated. By defining the overall estimate for the average request load as *e*, then we can calculate the exponentially smoothed average request load as (*e<sub>i* = The estimate of request load before the update, *e<sub>f* = the updated estimated, *a* = The calculation from the previous step, &alpha; = exponential smoothing factor):
+   
+      <img src="https://latex.codecogs.com/svg.image?\inline&space;e_f=(1-\alpha)\*e_i&plus;\alpha*{a}" />
+
+      This *e<sub>f* is the new value for the average request load.
+
+   3. **Load Prediction**: From the previous calculation we know that the average time to execute a request is estimated to be *e<sub>f*. If the number of active requests is *n*, then we can predict the response time of an incoming request to be the time to finish all active requests plus the incoming request. The predicted response time *p* can be defined as:
+
+      <img src="https://latex.codecogs.com/svg.image?p=e_f(n+1)" />
+      
+3. **Current Load Management**: The load balancer keeps track of all active requests and how long it has been since the request arrived. We denote the active duration of the oldest active request as *t*.
    1. **Request Queue**: A linked list data structure associated with each service version containing all active requests on that service starting from the oldest to the newest. As new requests arrive, their arrival time is recorded at the end of the queue. As requests are completed, their arrival times are set to NULL.
-   2. **Oldest Active Request**: Given the above request queue, if we remove elements from the queue until the first element has a non-NULL arrival time, then the first element (if any left) will be the arrival time of the oldest request. By comparing it with the current time the load balancer calculates the elapsed time since the requests arrival. This time is referred to as $t$.
+   2. **Oldest Active Request**: Given the above request queue, if we remove elements from the queue until the first element has a non-NULL arrival time, then the first element (if any left) will be the arrival time of the oldest request. By comparing it with the current time the load balancer calculates the elapsed time since the requests arrival. This time is referred to as *t*.
 
 
 <a name="lb-logic"/>
 
 ## Load Balancing Logic:
 For the explaination behind the variables used in this section refer to the previous section on **Load Balancing Setup/Calculations.**
-Note: As mentioned earlier $pt$ refers to the performance target (i.e. the upper bound for the response time specified in the SLA).
-1. If $p \ge pt$, send request to light-weight version of service.
-2. If $(t + e_f) \ge pt$, send request to light-weight version of service.
+Note: As mentioned earlier *pt* refers to the performance target (i.e. the upper bound for the response time specified in the SLA).
+1. If *p &ge; pt*, send request to light-weight version of service.
+2. If *(t + e<sub>f* *) &ge; pt*, send request to light-weight version of service.
 3. Otherwise, send request to heavy-weight version of service.
 Reasoning: If either we predict the request to exceed the performance target (response time upper bound) if sent to the heavy-weight version or that the current load on the heavy-weight version exceeds the performance target, then the current system load is too high to give the request full service. However, when neither of these conditions are violated, then the load on the system is considered low enought that we can safely provide full service for this request.
 
