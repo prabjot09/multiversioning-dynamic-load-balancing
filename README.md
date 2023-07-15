@@ -21,11 +21,13 @@ This is an extension of NGINX which implements load balancing for multiversioned
   - [Load Testing Using JMeter](#jmeter)
 - [Shutdown and Cleanup](#close)
 
+___
 <a name="intro"/>
 
 # Intro
 This section discusses the conceptual background behind the project and defines the term 'performance target' used in the rest of the documentation.
 <a name="desc"/>
+<br/>
 
 ## Description
 This is an extension of NGINX Open Source which has replaced the default round robin load balancing scheme with a custom scheme that is made specifically to load balance between multiversioned software.
@@ -45,11 +47,13 @@ You may also refer to the source code for the project developed in this paper wh
 ## Definition of Performance Target:
 The SLA (Service Level Agreement) specifies an upper-bound on the response-time that requests can have which ensures users recieve timely responses. The term referred to as the "performance target (pt)" in this program is exactly this desired upper bound. The load balancing will aim to keep the p90/p95/p99 response-times as close to this performance target as possible.
 
+___
 <a name="start"/>
 
 # Getting Started with Project:
 This section covers how to run the install, compile and configure the load balancer. It also goes over a helpful script which allows the tester to see the distribution of requests that go to each version of the service.
 <a name="setup"/>
+<br/>
 
 ## Set-up Instructions on Linux:
 1. Install a C compiler such as GCC. Use the command `gcc -v` to verify it is correctly installed.
@@ -91,12 +95,14 @@ This script is meant to be run while the load balancer is running and is recievi
 
 The output of the script is in the terminal that it is run in, but it also produces a .csv file which can be plotted later to visualize the output. This file will be generated in the directory `/var/log/nginx/usage.csv` on the host that runs the load balancer.
 
+___
 <a name="logic"/>
 
 # Project Logic
 This sections covers the theory behind the project, the modifications made to the default NGINX load balancing and the logic behind the decisions made.
 <a name="src-code"/>
-   
+<br/>
+
 ## Source Code Modifications:
 The original NGINX source code has been modified in 3 main ways.
 1. New data structures have been created to represent the service versions and relevant metrics used to perform the new load balancing.
@@ -149,13 +155,13 @@ Note: As mentioned earlier $pt$ refers to the performance target (i.e. the upper
 3. Otherwise, send request to heavy-weight version of service.
 Reasoning: If either we predict the request to exceed the performance target (response time upper bound) if sent to the heavy-weight version or that the current load on the heavy-weight version exceeds the performance target, then the current system load is too high to give the request full service. However, when neither of these conditions are violated, then the load on the system is considered low enought that we can safely provide full service for this request.
 
-<br>
-<br>
+___
 <a name="test"/>
   
 # Testing the Project
 This section goes over how to run the tests that showcase the performance of the system.
 <a name="znn"/>
+<br/>
 
 ## Test with ZNN News Service
 Note: This experiment also requires the installation of Docker which is also part of the setup for DockerMV. Do not skip the installation of Docker when you are setting up DockerMV later in this test.
@@ -261,7 +267,7 @@ JMeter is an application that uses Java 8 to simulate loads on servers. The foll
 11. The results of the test will be output in the terminal as it executes. To run an additional script to see how the load balancer is distributing requests, refer to this [section](#utilization).
 12. To view the results in visual form, navigate to the folder specified in step (10) and open the index.html file. Results of particular interest can be found under the 'Charts->Over Time' section and particular from the 'Response Time Percentiles Over Time (successful responses)' graph.
 
-
+___
 <a name="close"/>
 
 # Shutdown and Cleanup
