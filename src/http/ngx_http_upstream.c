@@ -1535,30 +1535,90 @@ ngx_http_upstream_connect(ngx_http_request_t *r, ngx_http_upstream_t *u)
     ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
                    "http upstream connect before: %i", 401401401);
 
-    rc = ngx_event_connect_peer(&u->peer);
     
+    /*
     ngx_http_upstream_rr_peer_data_t  *rrp = u->peer.data;
+    ngx_int_t counterooni = 1;
+    ngx_http_upstream_rr_peer_t *peer;
+    int i;
+    
+    ngx_http_upstream_rr_peers_wlock(rrp->peers);
+    for (peer = rrp->peers->peer, i = 0;
+         peer;
+         peer = peer->next, i++) {
+    	
+        counterooni += peer->version->completed_requests + peer->version->active_req;     
+    }
+    ngx_http_upstream_rr_peers_unlock(rrp->peers);
+    
+    ngx_peer_connection_t * pc = &u->peer;
+    if (pc->req_buffer == NULL) {
+        pc->req_buffer = (custom_req_data_t **) malloc(sizeof(custom_req_data_t *));
+        *(pc->req_buffer) = NULL;
+    }*/
+    
+    ngx_peer_connection_t * pc = &u->peer;
+    if (pc->req_buffer == NULL) {
+        pc->req_buffer = r;
+    }
+    
+    rc = ngx_event_connect_peer_versioned(pc, 0, r->start_sec, r->start_msec);
+    
+    /*    
     r->version = rrp->current->version;
+    
+    r->version->service_time += ((tp->sec - r->version->service_time_update_sec) * 1000 + (tp->msec - r->version->service_time_update_msec)) * (r->version->active_req-1); 
+    r->version->service_time += ((tp->sec - r->start_sec) * 1000 + (tp->msec - r->start_msec));
+    r->version->service_time_update_sec = tp->sec;
+    r->version->service_time_update_msec = tp->msec;	
+    
     r->req_finish_before = r->version->completed_requests;
     r->no = r->req_finish_before + r->version->active_req;
-    r->predict = r->version->predict;
     r->last_complete = r->version->latest;
+    r->predict = counterooni;
+    */
+    
+    /*
+    custom_req_data_t * curr_req = *(pc->req_buffer);
+    if (curr_req->req_num == counterooni) {
+    	// The first item is the current request
+        *(pc->req_buffer) = curr_req->next;
+    }
+    else {
+        // The first item not current request -> List has 2+ items
+        while (curr_req->next->req_num != counterooni) {
+            curr_req = curr_req->next;
+        }
+        custom_req_data_t * temp_curr = curr_req->next;
+        curr_req->next = temp_curr->next;
+        curr_req = temp_curr;
+    }
+    
+    r->version = curr_req->version;
+    r->req_finish_before =  curr_req->completed;
+    r->no = r->req_finish_before + curr_req->active;
+    r->last_complete = curr_req->latest_finished;
+    r->predict = curr_req->predict;
+    r->enter_time = (req_time_t *) curr_req->req_obj;
+    */
+    
+    // r->arrival_load = r->version->curr_load;
  
     
-    req_time_t * new_req_time = (req_time_t *) malloc(sizeof(req_time_t));
+    /* req_time_t * new_req_time = (req_time_t *) malloc(sizeof(req_time_t));
     r->enter_time = new_req_time;
     if (r->enter_time == NULL) {
         rc = NGX_ERROR;
     }
     else {
-        r->enter_time->time = ngx_timeofday();
-        r->enter_time->time->sec = r->start_sec;
-        r->enter_time->time->msec = r->start_msec;
+        ngx_http_upstream_rr_peers_wlock(rrp->peers);
+        r->enter_time->sec = r->start_sec;
+        r->enter_time->msec = r->start_msec;
         r->enter_time->next = NULL;
         r->enter_time->tail = NULL;
         
         
-        ngx_http_upstream_rr_peers_wlock(rrp->peers);
+        
         custom_versioned_server_t * version = rrp->current->version; 
         req_time_t ** time_list = version->req_times;
         req_time_t ** tail = version->req_tail;
@@ -1576,37 +1636,14 @@ ngx_http_upstream_connect(ngx_http_request_t *r, ngx_http_upstream_t *u)
                    "http upstream connects2: %i %i", (int) r->start_sec, (int) r->enter_time->time->sec);
             (*tail)->next = r->enter_time;
             *tail = r->enter_time;
-        }
-        
-        /*
-        
-        ngx_log_debug2(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
-                   "http upstream connects: %i %i", (int) r->start_sec, (int) r->enter_time->time->sec);
-        
-        if ((*time_list)->time == NULL && (*time_list)->next == NULL) {
-            ngx_log_debug2(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
-                   "http upstream connects: %i %i", (int) r->start_sec, (int) r->enter_time->time->sec);
-            (*time_list)->time = r->enter_time->time;
-            ngx_log_debug2(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
-                   "http upstream connects: %i %i", (int) r->start_sec, (int) r->enter_time->time->sec);
-            (*time_list)->next = NULL;
-            ngx_log_debug2(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
-                   "http upstream connects: %i %i", (int) r->start_sec, (int) r->enter_time->time->sec);
-        }
-        else {
-            ngx_log_debug2(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
-                   "http upstream connects2: %i %i", (*time_list)->time == NULL, (*time_list)->next == NULL);
-            (*tail)->next = new_req_time;
-            *tail = new_req_time;
-        }
-        */
-        
+        }        
         
         ngx_log_debug2(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
                    "http upstream connect3: %i %i", (int) r->start_sec, (int) r->enter_time->time->sec);
         
-        ngx_http_upstream_rr_peers_unlock(rrp->peers);
+        //ngx_http_upstream_rr_peers_unlock(rrp->peers);
     }
+    */
 
 
     ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,

@@ -378,22 +378,36 @@ typedef struct custom_versioned_server_s custom_versioned_server_t;
 typedef struct req_time_s req_time_t;
 
 struct custom_versioned_server_s {
-   ngx_int_t			    id;
+   ngx_int_t			            id;
+   char*			                ip;
+   ngx_int_t                        port;
+   char*                            name;
+   
    ngx_int_t                        completed_requests;
    ngx_int_t                        req_upper_bound;
    ngx_int_t                        active_req;
    float                            predicted_avg_rt;
-   ngx_int_t			    predict;
-   ngx_int_t			    latest;
+   float                            max_prediction;
+   ngx_int_t			            predict;
+   ngx_int_t			            latest;
+   
+   float 	                        avg_service_time;
+   
+   
+   ngx_int_t			            service_time;
+   ngx_int_t			            service_time_update_sec;  
+   ngx_int_t			            service_time_update_msec;  
+   float			                curr_load;
    
    req_time_t                       **req_times;
    req_time_t                       **req_tail;
    
-   ngx_atomic_t			    *lock;
+   ngx_atomic_t			            *lock;
 };
 
 struct req_time_s {
-    ngx_time_t                      *time;
+    ngx_int_t			    sec;
+    ngx_int_t                       msec;
     req_time_t                      *next;
     req_time_t                      *tail;    
 };
@@ -412,7 +426,7 @@ struct ngx_http_request_s {
     ngx_int_t 			      no;
     ngx_int_t			      last_complete;
     req_time_t			      *enter_time;
-    
+    float 			      arrival_load;
 
     void                            **ctx;
     void                            **main_conf;

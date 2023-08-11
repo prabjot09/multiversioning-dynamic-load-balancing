@@ -20,6 +20,7 @@
 
 
 typedef struct ngx_peer_connection_s  ngx_peer_connection_t;
+typedef struct custom_req_data_s  custom_req_data_t;
 
 typedef ngx_int_t (*ngx_event_get_peer_pt)(ngx_peer_connection_t *pc,
     void *data);
@@ -31,7 +32,21 @@ typedef ngx_int_t (*ngx_event_set_peer_session_pt)(ngx_peer_connection_t *pc,
     void *data);
 typedef void (*ngx_event_save_peer_session_pt)(ngx_peer_connection_t *pc,
     void *data);
+//typedef void (*custom_buffer_req)(ngx_peer_connection_t *pc, ngx_int_t n, ngx_int_t s, ngx_int_t ms);
 
+/*
+struct custom_req_data_s {
+    void                        *version;
+    ngx_int_t			 req_num;
+    ngx_int_t			 completed;
+    ngx_int_t			 active;
+    ngx_int_t			 predict;
+    ngx_int_t			 latest_finished;
+    void 			*req_obj;
+    
+    custom_req_data_t		*next;
+};
+*/
 
 struct ngx_peer_connection_s {
     ngx_connection_t                *connection;
@@ -45,9 +60,12 @@ struct ngx_peer_connection_s {
 
     ngx_event_get_peer_pt            get;
     ngx_event_free_peer_pt           free;
+    //custom_buffer_req   	     buffer_req;
     ngx_event_notify_peer_pt         notify;
     void                            *data;
 
+    void         		    *req_buffer;
+    
 #if (NGX_SSL || NGX_COMPAT)
     ngx_event_set_peer_session_pt    set_session;
     ngx_event_save_peer_session_pt   save_session;
@@ -74,6 +92,7 @@ struct ngx_peer_connection_s {
 
 
 ngx_int_t ngx_event_connect_peer(ngx_peer_connection_t *pc);
+ngx_int_t ngx_event_connect_peer_versioned(ngx_peer_connection_t *pc, ngx_int_t num, ngx_int_t start_s, ngx_int_t start_ms);
 ngx_int_t ngx_event_get_peer(ngx_peer_connection_t *pc, void *data);
 
 

@@ -1,7 +1,7 @@
-#define NGX_CONFIGURE " --prefix=/etc/nginx --sbin-path=/usr/sbin/nginx --conf-path=/etc/nginx/nginx.conf --error-log-path=/var/log/nginx/error.log --http-log-path=/var/log/nginx/access.log --pid-path=/var/run/nginx.pid --lock-path=/var/run/nginx.lock --http-client-body-temp-path=/var/cache/nginx/client_temp --http-proxy-temp-path=/var/cache/nginx/proxy_temp --http-fastcgi-temp-path=/var/cache/nginx/fastcgi_temp --http-uwsgi-temp-path=/var/cache/nginx/uwsgi_temp --http-scgi-temp-path=/var/cache/nginx/scgi_temp --user=nginx --group=nginx --with-http_realip_module --with-http_addition_module --with-http_sub_module --with-http_dav_module --with-http_flv_module --with-http_mp4_module --with-http_gunzip_module --with-http_gzip_static_module --with-http_random_index_module --with-http_secure_link_module --with-http_stub_status_module --with-http_auth_request_module --with-threads --with-stream --with-http_slice_module --with-mail --with-file-aio --with-ipv6 --with-http_v2_module --with-cc-opt='-O2 -g -pipe -Wall -Wp,-D_FORTIFY_SOURCE=2 -fexceptions -fstack-protector --param=ssp-buffer-size=4 -m64 -mtune=generic' --with-http_realip_module"
+#define NGX_CONFIGURE " --prefix=/etc/nginx --sbin-path=/usr/sbin/nginx --conf-path=/etc/nginx/nginx.conf --error-log-path=/var/log/nginx/error.log --http-log-path=/var/log/nginx/access.log --pid-path=/var/run/nginx.pid --lock-path=/var/run/nginx.lock --with-http_realip_module --with-http_addition_module --with-http_sub_module --with-http_dav_module --with-http_flv_module --with-http_mp4_module --with-http_gunzip_module --with-http_gzip_static_module --with-http_random_index_module --with-http_secure_link_module --with-http_stub_status_module --with-http_auth_request_module --with-threads --with-stream --with-http_slice_module --with-mail --with-file-aio --with-ipv6 --with-http_v2_module --with-cc-opt='-O2 -g -pipe -Wall -Wp,-D_FORTIFY_SOURCE=2 -fexceptions -fstack-protector --param=ssp-buffer-size=4 -m64 -mtune=generic' --with-http_realip_module"
 
 #ifndef NGX_COMPILER
-#define NGX_COMPILER  "gcc 11.3.0 (Ubuntu 11.3.0-1ubuntu1~22.04.1) "
+#define NGX_COMPILER  "gcc 11.4.0 (Ubuntu 11.4.0-1ubuntu1~22.04) "
 #endif
 
 
@@ -519,27 +519,27 @@
 
 
 #ifndef NGX_HTTP_CLIENT_TEMP_PATH
-#define NGX_HTTP_CLIENT_TEMP_PATH  "/var/cache/nginx/client_temp"
+#define NGX_HTTP_CLIENT_TEMP_PATH  "client_body_temp"
 #endif
 
 
 #ifndef NGX_HTTP_PROXY_TEMP_PATH
-#define NGX_HTTP_PROXY_TEMP_PATH  "/var/cache/nginx/proxy_temp"
+#define NGX_HTTP_PROXY_TEMP_PATH  "proxy_temp"
 #endif
 
 
 #ifndef NGX_HTTP_FASTCGI_TEMP_PATH
-#define NGX_HTTP_FASTCGI_TEMP_PATH  "/var/cache/nginx/fastcgi_temp"
+#define NGX_HTTP_FASTCGI_TEMP_PATH  "fastcgi_temp"
 #endif
 
 
 #ifndef NGX_HTTP_UWSGI_TEMP_PATH
-#define NGX_HTTP_UWSGI_TEMP_PATH  "/var/cache/nginx/uwsgi_temp"
+#define NGX_HTTP_UWSGI_TEMP_PATH  "uwsgi_temp"
 #endif
 
 
 #ifndef NGX_HTTP_SCGI_TEMP_PATH
-#define NGX_HTTP_SCGI_TEMP_PATH  "/var/cache/nginx/scgi_temp"
+#define NGX_HTTP_SCGI_TEMP_PATH  "scgi_temp"
 #endif
 
 
@@ -554,11 +554,11 @@
 
 
 #ifndef NGX_USER
-#define NGX_USER  "nginx"
+#define NGX_USER  "nobody"
 #endif
 
 
 #ifndef NGX_GROUP
-#define NGX_GROUP  "nginx"
+#define NGX_GROUP  "nogroup"
 #endif
 

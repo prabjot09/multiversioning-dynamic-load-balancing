@@ -83,6 +83,10 @@ struct ngx_http_upstream_rr_peers_s {
     ngx_http_upstream_rr_peers_t   *next;
 
     ngx_http_upstream_rr_peer_t    *peer;
+    
+    ngx_int_t       			    log_time;
+    ngx_int_t                       max_req;
+    ngx_int_t                       active_req;
 };
 
 
@@ -150,7 +154,8 @@ ngx_int_t ngx_http_upstream_get_round_robin_peer(ngx_peer_connection_t *pc,
 void ngx_http_upstream_free_round_robin_peer(ngx_peer_connection_t *pc,
     void *data, ngx_uint_t state);
 void custom_server_init(custom_versioned_server_t *version, ngx_int_t id);
-
+//void ngx_http_upstream_buffer_request_data(ngx_peer_connection_t *pc, ngx_int_t count, ngx_int_t start_s, ngx_int_t start_ms);
+void ngx_http_upstream_buffer_request_data(ngx_peer_connection_t *pc);
 
 #if (NGX_HTTP_SSL)
 ngx_int_t

@@ -189,7 +189,7 @@ cc -O2 -g -pipe -Wall -Wp,-D_FORTIFY_SOURCE=2 -fexceptions -fstack-protector --p
 ----------------------------------------
 checking for crypt()
 
-/usr/bin/ld: /tmp/ccfDs9gV.o: in function `main':
+/usr/bin/ld: /tmp/cccmbGpg.o: in function `main':
 /home/prabjot/Documents/nginx_alter/nginx-dynamic-load-balancing/objs/autotest.c:7: undefined reference to `crypt'
 collect2: error: ld returned 1 exit status
 ----------
@@ -603,7 +603,7 @@ objs/autotest.c: In function 'main':
 objs/autotest.c:7:5: warning: implicit declaration of function 'setproctitle' [-Wimplicit-function-declaration]
     7 |     setproctitle("test");;
       |     ^~~~~~~~~~~~
-/usr/bin/ld: /tmp/cc0FWJqu.o: in function `main':
+/usr/bin/ld: /tmp/ccYHSCFu.o: in function `main':
 /home/prabjot/Documents/nginx_alter/nginx-dynamic-load-balancing/objs/autotest.c:7: undefined reference to `setproctitle'
 collect2: error: ld returned 1 exit status
 ----------

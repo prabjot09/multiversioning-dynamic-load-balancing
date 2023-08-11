@@ -161,6 +161,8 @@ static char *ngx_http_log_open_file_cache(ngx_conf_t *cf, ngx_command_t *cmd,
     void *conf);
 static ngx_int_t ngx_http_log_init(ngx_conf_t *cf);
 
+static char *custom_system_monitor_capacity(ngx_http_upstream_rr_peers_t * peers);
+
 
 static ngx_command_t  ngx_http_log_commands[] = {
 
@@ -842,7 +844,7 @@ ngx_http_log_request_time(ngx_http_request_t *r, u_char *buf,
     float   ms;
     float a;
     
-    a = 0.1;
+    a = 0.01;
     
     tp = ngx_timeofday();
 
@@ -854,32 +856,129 @@ ngx_http_log_request_time(ngx_http_request_t *r, u_char *buf,
     	//ngx_rwlock_wlock(r->version->lock);
     	ngx_http_upstream_rr_peer_data_t * rrp = r->upstream->peer.data;
         ngx_http_upstream_rr_peers_wlock(rrp->peers);
+        
+        ngx_int_t monitor = 0;
+        if (rrp->peers->log_time == -1) {
+            rrp->peers->log_time = ngx_time();
+        }
+        else if (ngx_time() - rrp->peers->log_time >= 5) {
+            rrp->peers->log_time = ngx_time();
+            monitor = 1;
+        }
+        
         r->version->completed_requests = (r->version->completed_requests + 1) % r->version->req_upper_bound;
         r->version->active_req -= 1;
+        rrp->peers->active_req -= 1;
         r->version->latest = r->no;
-        ngx_time_t * start_t = r->enter_time->time;
-        r->enter_time->time = NULL;
-        if (r->version->predicted_avg_rt == 0) {
-            r->version->predicted_avg_rt = ms / (r->version->completed_requests - r->req_finish_before);
+        ngx_int_t start_s = r->enter_time->sec;
+        ngx_int_t start_ms = r->enter_time->msec;
+        r->enter_time->sec = -1;
+        r->enter_time->msec = -1;
+        
+        ngx_int_t elapsed = (tp->sec - r->version->service_time_update_sec) * 1000 + (tp->msec - r->version->service_time_update_msec);
+        r->version->service_time += (r->version->active_req + 1) * elapsed;
+        r->version->service_time = r->version->service_time - ms;
+        r->version->service_time_update_sec = tp->sec;
+        r->version->service_time_update_msec = tp->msec;
+        
+        
+        if (r->version->completed_requests < 100) {
+            float b = 1 - (1 / (float) r->version->completed_requests);
+            r->version->predicted_avg_rt = (b*r->version->predicted_avg_rt) + (1-b)*((float) ms / (r->version->completed_requests - r->req_finish_before));
         }
         else if (r->version->completed_requests < r->req_finish_before) {
-            r->version->predicted_avg_rt = a * (ms / (r->version->completed_requests - r->req_finish_before + r->version->req_upper_bound)) + (1-a) * r->version->predicted_avg_rt;
+            r->version->predicted_avg_rt = a * ((float) ms / (r->version->completed_requests - r->req_finish_before + r->version->req_upper_bound)) + (1-a) * r->version->predicted_avg_rt;
         }
         else {
-            r->version->predicted_avg_rt = a * (ms / (r->version->completed_requests - r->req_finish_before)) + (1-a) * r->version->predicted_avg_rt;
+            r->version->predicted_avg_rt = a * ((float) ms / ngx_max(1, r->version->completed_requests - r->req_finish_before)) + (1-a) * r->version->predicted_avg_rt;
     	}
-    	//req_time_t ** time_list = r->version->req_times;
-        //ngx_rwlock_unlock(r->version->lock);
+    	
+    	r->version->max_prediction = ngx_max(r->version->max_prediction, r->version->predicted_avg_rt);
+    	
+    	
+        char * c = NULL;        
+        if (monitor) {
+            c = custom_system_monitor_capacity(rrp->peers);
+            //r->version->max_prediction = r->version->predicted_avg_rt;
+        }
+        
         ngx_http_upstream_rr_peers_unlock(rrp->peers);
-    	return ngx_sprintf(buf, "custom: %T.%03M avg:%.3f predict:%i, before:%i number:%i active:%i complete:%i latest:%i v:%i (%T.%03M)", 
-    	               (int) ms / 1000, (int) ms % 1000, r->version->predicted_avg_rt, r->version->predict, r->req_finish_before, 
-    	               r->no, r->no - r->req_finish_before, r->version->completed_requests, r->last_complete, r->version->id,
-    	               (int) ((ngx_msec_int_t) ((tp->sec - start_t->sec) * 1000 + (tp->msec - start_t->msec))) / 1000,
-    	               (int) ((ngx_msec_int_t) ((tp->sec - start_t->sec) * 1000 + (tp->msec - start_t->msec))) % 1000);
+    	u_char * res =  ngx_sprintf(buf, "custom: %T.%03M avg:%.3f predict:%i, before:%i number:%i active:%i complete:%i latest:%i v:%i (%s:%i) (%T.%03M)  - service:%i \n%s", 
+    	               (int) ms / 1000, (int) ms % 1000, r->version->predicted_avg_rt, r->predict, r->req_finish_before, r->no, 
+    	               r->no - r->req_finish_before, r->version->completed_requests, r->last_complete, r->version->id, r->version->ip, 
+    	               r->version->port,
+    	               (int) ((ngx_msec_int_t) ((tp->sec - start_s) * 1000 + (tp->msec - start_ms))) / 1000,
+    	               (int) ((ngx_msec_int_t) ((tp->sec - start_s) * 1000 + (tp->msec - start_ms))) % 1000,
+    	               r->version->service_time, c ? c : "");
+    	               
+    	//u_char * res =  ngx_sprintf(buf, "%s", c ? c : "");
+    	               
+    	if (c) {
+    	    free(c);
+    	}
+    	return res;
     	               
     }
     
     return ngx_sprintf(buf, "h%T.%03M", (time_t) ms / 1000, (int) ms % 1000);
+}
+
+
+static char *
+custom_system_monitor_capacity(ngx_http_upstream_rr_peers_t * peers) 
+{
+    ngx_http_upstream_rr_peer_t     *peer;
+    ngx_int_t                        i, pt;
+    
+    pt = 0;
+    for (peer = peers->peer, i = 0;
+         peer;
+         peer = peer->next, i++) {
+         
+        if (peer->pt > 0) {
+            pt = peer->pt;
+        }
+    }
+    
+    if (pt == 0) {
+        return "[Issue] Performance Target Not Set!";
+    }
+    
+    float capacity = 0;
+    char *res = malloc(sizeof(char) * 1000);
+    *res = '\0';
+    sprintf(res, "[%s] System State:", (char *) ngx_cached_http_log_time.data);
+    
+    for (peer = peers->peer, i = 0;
+         peer;
+         peer = peer->next, i++) {
+         
+        char *tmp = malloc(sizeof(char) * 100); 
+        *tmp = '\0';
+        if (peer->version->predicted_avg_rt != 0) {
+            capacity += (float) pt / peer->version->predicted_avg_rt;
+            sprintf(tmp, "server:(%s:%d)-%.2f,", peer->version->ip, (int) peer->version->port, (float) pt / peer->version->predicted_avg_rt);
+        }
+        strcat(res, tmp);
+        free(tmp);
+    }
+    
+    int capacity_int = (int) capacity;
+    char *tmp = malloc(sizeof(char) * 100);
+    *tmp = '\0';
+    sprintf(tmp, "total:%d,request_load:%d", capacity_int, (int) peers->max_req);
+    strcat(res, tmp);
+    //strcat(res, "%stotal:%d,request_load:%d", res, capacity_int, (int) peers->max_req);
+    free(tmp);
+    
+    char *empty = NULL;
+    if ((int) peers->max_req == 0) {
+        free(res);
+        res = empty;
+    }
+    
+    peers->max_req = 0;
+    return res;
 }
 
 

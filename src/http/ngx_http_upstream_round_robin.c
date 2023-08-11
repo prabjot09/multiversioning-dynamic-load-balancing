@@ -35,15 +35,22 @@ custom_server_init(custom_versioned_server_t *version, ngx_int_t id)
     version->id = id;
     
     version->completed_requests = 0;
+    version->max_prediction = 0;
     version->req_upper_bound = INT_MAX - 5;
     version->active_req = 0;
     version->predicted_avg_rt = 0;
     version->predict = 0;
     version->latest = 0;
+    version->avg_service_time = 0;
     version->req_times = (req_time_t **) malloc(sizeof(req_time_t *));
     version->req_tail = (req_time_t **) malloc(sizeof(req_time_t *));
     *(version->req_times) = NULL;
     *(version->req_tail) = NULL;
+    
+    version->service_time = 0;
+    version->service_time_update_sec = 0;
+    version->service_time_update_msec = 0;
+    version->curr_load = 0;
        
     lock = malloc(sizeof(ngx_atomic_t));
     if (lock == NULL) {
@@ -63,7 +70,8 @@ ngx_http_upstream_init_round_robin(ngx_conf_t *cf,
     ngx_http_upstream_server_t    *server;
     ngx_http_upstream_rr_peer_t   *peer, **peerp;
     ngx_http_upstream_rr_peers_t  *peers, *backup;
-    custom_versioned_server_t     *heavy, *light;
+    //custom_versioned_server_t     *heavy, *light;
+    custom_versioned_server_t     *version;
 
     us->peer.init = ngx_http_upstream_init_round_robin_peer;
 
@@ -108,7 +116,8 @@ ngx_http_upstream_init_round_robin(ngx_conf_t *cf,
         if (peer == NULL) {
             return NGX_ERROR;
         }
-
+        
+        /*
 	heavy = malloc(sizeof(custom_versioned_server_t));
 	if (heavy == NULL) {
 	    return NGX_ERROR;
@@ -121,9 +130,7 @@ ngx_http_upstream_init_round_robin(ngx_conf_t *cf,
 	
 	custom_server_init(heavy, 4);
 	custom_server_init(light, 2);
-	if (&heavy->lock == NULL || &light->lock == NULL) {
-	    return NGX_ERROR;
-	}
+	*/
 	
         peers->single = (n == 1);
         peers->number = n;
@@ -131,6 +138,9 @@ ngx_http_upstream_init_round_robin(ngx_conf_t *cf,
         peers->total_weight = w;
         peers->tries = t;
         peers->name = &us->host;
+        peers->log_time = -1;
+        peers->max_req = 0;
+        peers->active_req = 0;
 
         n = 0;
         peerp = &peers->peer;
@@ -145,13 +155,32 @@ ngx_http_upstream_init_round_robin(ngx_conf_t *cf,
                 peer[n].socklen = server[i].addrs[j].socklen;
                 peer[n].name = server[i].addrs[j].name;
                 peer[n].weight = server[i].weight;
+                
+                
+                char * name_copy = malloc(sizeof(char) * 60);
+                strcpy(name_copy, (char *) peer[n].name.data);
+                
+                char * name_ptr = strtok(name_copy, ":");
+                
+                version = malloc(sizeof(custom_versioned_server_t));
                 if (server[i].weight == 2) {
-                    peer[n].heavy = heavy;
-                    peer[n].version = heavy; 
+                    custom_server_init(version, 4);
+                    peer[n].heavy = version; 
                 }
                 else {
-                    peer[n].light = light;
-                    peer[n].version = light;
+                    custom_server_init(version, 2);
+                    peer[n].light = version;
+                }
+                peer[n].version = version;
+                
+                
+                if (name_ptr != NULL) {
+                    peer[n].version->ip = name_ptr;
+                    name_ptr = strtok(NULL, "");
+                }
+                
+                if (name_ptr != NULL) {
+                    peer[n].version->port = atoi(name_ptr);
                 }
                 
                 peer[n].effective_weight = server[i].weight;
@@ -329,7 +358,7 @@ ngx_http_upstream_init_round_robin_peer(ngx_http_request_t *r,
 
         r->upstream->peer.data = rrp;
     }
-
+    
     rrp->peers = us->peer.data;
     rrp->current = NULL;
     rrp->config = 0;
@@ -486,6 +515,117 @@ ngx_http_upstream_create_round_robin_peer(ngx_http_request_t *r,
 }
 
 
+
+void
+ngx_http_upstream_buffer_request_data(ngx_peer_connection_t *pc) {
+    ngx_http_upstream_rr_peer_data_t  *rrp = pc->data;
+    //ngx_http_upstream_rr_peers_wlock(rrp->peers);
+    
+    /*
+    custom_req_data_t ** buffer = pc->req_buffer;
+    custom_req_data_t * curr_req;
+    
+    if (*buffer == NULL) {
+        custom_req_data_t * buffer_element = malloc(sizeof(custom_req_data_t));
+        *buffer = buffer_element;
+        curr_req = buffer_element;
+    }
+    else {
+    	custom_req_data_t * curr_el = *buffer;
+    	while(curr_el->next != NULL) {
+    	    curr_el = curr_el->next;
+    	}
+    	
+    	custom_req_data_t * buffer_element = malloc(sizeof(custom_req_data_t));
+        curr_el->next = buffer_element;
+        curr_req = buffer_element;
+    }
+    
+    custom_versioned_server_t * v = rrp->current->version;
+    ngx_time_t *tp = ngx_timeofday();
+    
+    v->service_time += ((tp->sec - v->service_time_update_sec) * 1000 + (tp->msec - v->service_time_update_msec)) * (v->active_req-1); 
+    v->service_time += ((tp->sec - start_s) * 1000 + (tp->msec - start_ms));
+    v->service_time_update_sec = tp->sec;
+    v->service_time_update_msec = tp->msec;
+    
+    curr_req->version = v;
+    curr_req->req_num = count;
+    curr_req->completed = v->completed_requests;
+    curr_req->active = v->active_req;
+    curr_req->latest_finished = v->latest;
+    curr_req->predict = v->predict;
+       
+    req_time_t * new_req_time = (req_time_t *) malloc(sizeof(req_time_t));
+    curr_req->req_obj = new_req_time;
+    
+    if (new_req_time == NULL) {
+        return;
+    }
+    else {
+        new_req_time->sec = start_s;
+        new_req_time->msec = start_ms;
+        new_req_time->next = NULL;
+        new_req_time->tail = NULL;
+        
+        req_time_t ** time_list = v->req_times;
+        req_time_t ** tail = v->req_tail;
+        
+        if (*time_list == NULL) {
+            *time_list = new_req_time;
+            *tail = new_req_time;
+        }
+        else {
+            (*tail)->next = new_req_time;
+            *tail = new_req_time;
+        }
+    }
+    */
+    
+    ngx_http_request_t *r = (ngx_http_request_t *) pc->req_buffer;
+    
+    custom_versioned_server_t * v = rrp->current->version;
+    ngx_time_t *tp = ngx_timeofday();
+    
+    v->service_time += ((tp->sec - v->service_time_update_sec) * 1000 + (tp->msec - v->service_time_update_msec)) * (v->active_req-1); 
+    v->service_time += ((tp->sec - r->start_sec) * 1000 + (tp->msec - r->start_msec));
+    v->service_time_update_sec = tp->sec;
+    v->service_time_update_msec = tp->msec;
+    
+    r->version = v;
+    r->req_finish_before =  v->completed_requests;
+    r->no = r->req_finish_before + v->active_req;
+    r->last_complete = v->latest;
+    r->predict = v->predict;
+       
+    req_time_t * new_req_time = (req_time_t *) malloc(sizeof(req_time_t));
+    
+    if (new_req_time != NULL) {
+        new_req_time->sec = r->start_sec;
+        new_req_time->msec = r->start_msec;
+        new_req_time->next = NULL;
+        new_req_time->tail = NULL;
+        
+        req_time_t ** time_list = v->req_times;
+        req_time_t ** tail = v->req_tail;
+        
+        if (*time_list == NULL) {
+            *time_list = new_req_time;
+            *tail = new_req_time;
+        }
+        else {
+            (*tail)->next = new_req_time;
+            *tail = new_req_time;
+        }
+    }
+    
+    r->enter_time = new_req_time;
+    
+    //ngx_http_upstream_rr_peers_unlock(rrp->peers);
+}
+
+
+
 ngx_int_t
 ngx_http_upstream_get_round_robin_peer(ngx_peer_connection_t *pc, void *data)
 {
@@ -505,56 +645,35 @@ ngx_http_upstream_get_round_robin_peer(ngx_peer_connection_t *pc, void *data)
     peers = rrp->peers;
     ngx_http_upstream_rr_peers_wlock(peers);
 
-    if (peers->single) {
-        peer = peers->peer;
-        if (peer->down) {
-            goto failed;
-        }
+    peer = ngx_http_upstream_get_peer(rrp);
 
-        if (peer->max_conns && peer->conns >= peer->max_conns) {
-            goto failed;
-        }
+    if (peer == NULL) {
+        goto failed;
+    }        
 
-        rrp->current = peer;
-
-    } else {
-
-        /* there are several peers */
-        peer = ngx_http_upstream_get_peer(rrp);
-
-        if (peer == NULL) {
-            goto failed;
-        }        
-        
-        req_time_t ** time_list = peer->heavy != NULL ? peer->heavy->req_times : NULL;
-        if (time_list != NULL && *time_list != NULL && (*time_list)->time != NULL) {
-            //ngx_time_t * tp = ngx_timeofday();
-            ngx_log_debug2(NGX_LOG_DEBUG_HTTP, pc->log, 0,
-                   "http upstream connects2: %i %i", (tp->sec - (*time_list)->time->sec) * 1000, (tp->msec - (*time_list)->time->msec));
-        }
-
-        if (peer->light != NULL) {
-              ngx_log_debug2(NGX_LOG_DEBUG_HTTP, pc->log, 0,
-                       "version light: %p %ims",
-                       peer, peer->light->predicted_avg_rt);
-             
-        }
-        if (peer->heavy != NULL) {
-              ngx_log_debug2(NGX_LOG_DEBUG_HTTP, pc->log, 0,
-                       "version heavy: %p %ims",
-                       peer, peer->heavy->predicted_avg_rt);
-        }	
-        
-        ngx_log_debug2(NGX_LOG_DEBUG_HTTP, pc->log, 0,
-                       "get rr peer, current: %p %i",
-                       peer, peer->current_weight);
+    if (peer->light != NULL) {
+          ngx_log_debug2(NGX_LOG_DEBUG_HTTP, pc->log, 0,
+                   "version light: %p %ims",
+                   peer, peer->light->predicted_avg_rt);
+         
     }
-
+    if (peer->heavy != NULL) {
+          ngx_log_debug2(NGX_LOG_DEBUG_HTTP, pc->log, 0,
+                   "version heavy: %p %ims",
+                   peer, peer->heavy->predicted_avg_rt);
+    }	
+    
+    ngx_log_debug2(NGX_LOG_DEBUG_HTTP, pc->log, 0,
+                   "get rr peer, current: %p %i",
+                   peer, peer->current_weight);
+    
     pc->sockaddr = peer->sockaddr;
     pc->socklen = peer->socklen;
     pc->name = &peer->name;
 
     peer->conns++;
+    
+    ngx_http_upstream_buffer_request_data(pc);
 
     ngx_http_upstream_rr_peers_unlock(peers);
 
@@ -599,14 +718,14 @@ ngx_http_upstream_get_peer(ngx_http_upstream_rr_peer_data_t *rrp)
 {
     time_t                        now;
     uintptr_t                     m;
-    ngx_int_t                     pt;
+    ngx_int_t                     pt, heavy_oldest;
+    float                         heavy_load, light_load;
     ngx_uint_t                    i, n;
     ngx_http_upstream_rr_peer_t  *peer, *best, *heavy, *light;
 
     now = ngx_time();
 
     best = NULL;
-    //total = 0;
 
 #if (NGX_SUPPRESS_WARN)
     //p = 0;
@@ -615,6 +734,22 @@ ngx_http_upstream_get_peer(ngx_http_upstream_rr_peer_data_t *rrp)
     heavy = NULL;
     light = NULL;
     pt = 0;
+    heavy_oldest = 0;
+    heavy_load = 0.0f; light_load = 0.0f;
+    
+    ngx_time_t * tp = ngx_timeofday();
+    
+    
+    for (peer = rrp->peers->peer, i = 0;
+         peer;
+         peer = peer->next, i++) {
+         
+        if (peer->pt > 0) {
+            pt = peer->pt;
+        }
+    }
+    
+    
     
     for (peer = rrp->peers->peer, i = 0;
          peer;
@@ -642,45 +777,75 @@ ngx_http_upstream_get_peer(ngx_http_upstream_rr_peer_data_t *rrp)
             continue;
         }
         
-        if (peer->pt > 0) {
-            pt = peer->pt;
+        /*
+        if (peer->heavy != NULL) {
+            heavy = peer;
+        }
+        else if (peer->light != NULL) {
+            light = peer;
+        }*/
+             
+        req_time_t ** time_list = peer->version->req_times;
+	while ((*time_list) != NULL && (*time_list)->sec == -1) {
+	    req_time_t * next = (*time_list)->next;
+	    free(*time_list);
+            *time_list = next;
+        }
+        
+        
+        if (peer->version->max_prediction >= pt) {
+            peer->version->predicted_avg_rt = pt - 1;
+            peer->version->max_prediction = pt - 1;
+        }
+        
+        ngx_int_t oldest = 0;
+        if (*time_list != NULL && (*time_list)->sec != -1) {
+            oldest = (tp->sec - (*time_list)->sec) * 1000 + (tp->msec - (*time_list)->msec);
+        }
+        
+        //ngx_int_t elapsed = (tp->sec - heavy->version->service_time_update_sec) * 1000 + (tp->msec - heavy->version->service_time_update_msec);
+        float load = (peer->version->predicted_avg_rt * (peer->version->active_req + 1));
+        //float avg_service = heavy->version->avg_service_time * heavy->version->active_req;
+        //load += ngx_max(0, (avg_service - (elapsed * heavy->version->active_req + heavy->version->service_time)) / ngx_max(1, avg_service));
+        
+        if (peer->version->completed_requests + peer->version->active_req < 200) {
+            peer->version->predicted_avg_rt = peer->version->predicted_avg_rt * 0.99;
         }
         
         if (heavy == NULL && peer->heavy != NULL) {
-            //peer->checked = now;
-   	    //peer->light->active_req = (peer->light->active_req + 1) % peer->light->req_upper_bound;
-            //rrp->current = peer;
-            //return peer;
             heavy = peer;
+            heavy_load = load;
+            heavy_oldest = oldest;            
+            continue;
         }
         else if (light == NULL && peer->light != NULL) {
             light = peer;
+            light_load = load;
+            continue;
         }
-
-        //peer->current_weight += peer->effective_weight;
-        //total += peer->effective_weight;
-
-        /*
-        if (peer->effective_weight < peer->weight) {
-            peer->effective_weight++;
+           
+        
+        //if (peer->heavy != NULL && (load < heavy_load) && (oldest + peer->version->predicted_avg_rt < pt)) {
+        if (peer->heavy != NULL && (load < heavy_load)) {
+            heavy = peer;
+            heavy_load = load;
+            heavy_oldest = oldest;
         }
-
-        if (best == NULL || peer->current_weight > best->current_weight) {
-            best = peer;
-            p = i;
+        //else if (peer->light != NULL && (load < light_load) && (oldest + peer->version->predicted_avg_rt < pt)) {
+        else if (peer->light != NULL && (load < light_load)) {
+            light = peer;
+            light_load = load;
         }
-        */
+        
     }
     
-   // ngx_rwlock_wlock(heavy->version->lock);
+    /*
     req_time_t ** time_list = heavy->version->req_times;
-    while ((*time_list) != NULL && (*time_list)->time == NULL) {
+    while ((*time_list) != NULL && (*time_list)->sec == -1) {
         req_time_t * next = (*time_list)->next;
         free(*time_list);
         *time_list = next;
     }
-    
-    ngx_time_t * tp = ngx_timeofday();
     
     if (pt == 0) {
         return heavy;
@@ -690,42 +855,64 @@ ngx_http_upstream_get_peer(ngx_http_upstream_rr_peer_data_t *rrp)
         heavy->version->predicted_avg_rt = pt - 1;
     }
     
-    if (heavy->version->predicted_avg_rt * (heavy->version->active_req + 1) >= pt) {
-    	best = light;
+    ngx_time_t * tp = ngx_timeofday();
+    ngx_int_t oldest = 0;
+    if (*time_list != NULL && (*time_list)->sec != -1) {
+        oldest = (tp->sec - (*time_list)->sec) * 1000 + (tp->msec - (*time_list)->msec);
     }
-    else if (*time_list != NULL && (*time_list)->time != NULL && ((tp->sec - (*time_list)->time->sec) * 1000 + (tp->msec - (*time_list)->time->msec) + heavy->version->predicted_avg_rt) >= pt) {
+        
+    ngx_int_t elapsed = (tp->sec - heavy->version->service_time_update_sec) * 1000 + (tp->msec - heavy->version->service_time_update_msec);
+    
+    float load = (heavy->version->predicted_avg_rt * (heavy->version->active_req + 1));	
+    float avg_service = heavy->version->avg_service_time * heavy->version->active_req;
+    load += ngx_max(0, (avg_service - (elapsed * heavy->version->active_req + heavy->version->service_time)) / ngx_max(1, avg_service));
+    */
+    
+    if (heavy == NULL) {
         best = light;
     }
-    else {
+    else if (light == NULL) {
         best = heavy;
     }
-    //ngx_rwlock_unlock(heavy->version->lock);
+    else {
     
-    best->version->predict = best->version->predicted_avg_rt * (best->version->active_req + 1);
+        if (heavy_oldest > 0 && (heavy_oldest + heavy->version->predicted_avg_rt) >= pt) {
+        	best = light;
+        }
+        else if (heavy_load >= pt) {
+            best = light;
+        }
+        else {
+            best = heavy;
+        }
+    }
+    
+    
+    ngx_int_t elapsed = (tp->sec - best->version->service_time_update_sec) * 1000 + (tp->msec - best->version->service_time_update_msec);
+    best->version->service_time = elapsed * best->version->active_req + best->version->service_time;
+    if (best->version->avg_service_time == 0) {
+        best->version->avg_service_time =  ((float) best->version->service_time) / ngx_max(1, best->version->active_req);
+    }
+    else {
+        best->version->avg_service_time = (0.95 * best->version->avg_service_time) + 0.05 * (((float) best->version->service_time) / ngx_max(1, best->version->active_req)); 
+    }
+    
+    best->version->service_time_update_sec = tp->sec;
+    best->version->service_time_update_msec = tp->msec;
+    best->version->curr_load = best == heavy ? heavy_load : light_load;
+    
+    best->version->predict = best == heavy ? heavy_load : light_load;
     if (best == NULL) {
         return NULL;
     }
     
     best->checked = now;
    
-    //ngx_rwlock_wlock(best->version->lock);
-    best->version->active_req = best->version->active_req + 1;
-    //ngx_rwlock_unlock(best->version->lock);
+    best->version->active_req += 1;
+    rrp->peers->active_req += 1;
+    rrp->peers->max_req = ngx_max(rrp->peers->active_req, rrp->peers->max_req);
     rrp->current = best;
     return best;
-
-    //n = p / (8 * sizeof(uintptr_t));
-    //m = (uintptr_t) 1 << p % (8 * sizeof(uintptr_t));
-
-    //rrp->tried[n] |= m;
-
-    //best->current_weight -= total;
-
-    //if (now - best->checked > best->fail_timeout) {
-    //    best->checked = now;
-    //}
-
-    //return best;
 }
 
 

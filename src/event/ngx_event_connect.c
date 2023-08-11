@@ -17,8 +17,14 @@ static ngx_int_t ngx_event_connect_set_transparent(ngx_peer_connection_t *pc,
 #endif
 
 
+ngx_int_t 
+ngx_event_connect_peer(ngx_peer_connection_t *pc) {
+    return ngx_event_connect_peer_versioned(pc, -1, -1, -1);
+}
+
+
 ngx_int_t
-ngx_event_connect_peer(ngx_peer_connection_t *pc)
+ngx_event_connect_peer_versioned(ngx_peer_connection_t *pc, ngx_int_t num, ngx_int_t start_s, ngx_int_t start_ms)
 {
     int                rc, type, value;
 #if (NGX_HAVE_IP_BIND_ADDRESS_NO_PORT || NGX_LINUX)
@@ -32,6 +38,8 @@ ngx_event_connect_peer(ngx_peer_connection_t *pc)
     ngx_connection_t  *c;
 
     rc = pc->get(pc, pc->data);
+    //pc->buffer_req(pc, num, start_s, start_ms);
+    
     ngx_log_debug1(NGX_LOG_DEBUG_HTTP, pc->log, 0,
                    "http upstream connect after??: %i", 40400404040400404);
     if (rc != NGX_OK) {
@@ -50,7 +58,6 @@ ngx_event_connect_peer(ngx_peer_connection_t *pc)
                       ngx_socket_n " failed");
         return NGX_ERROR;
     }
-
 
     c = ngx_get_connection(s, pc->log);
 
