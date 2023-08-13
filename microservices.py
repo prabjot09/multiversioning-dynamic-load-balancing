@@ -474,7 +474,7 @@ if __name__ == '__main__':
     while configServerPort == nginxPort:
         configServerPort = system.getFreePort()
     
-    nginx_img = "nginx-dynamic:v4"
+    nginx_img = "prabjotd09/nginx-dynamic:v4"
     
     for env_var in env:
         key, val = env_var.split("=")
