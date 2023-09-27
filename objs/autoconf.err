@@ -189,8 +189,8 @@ cc -O2 -g -pipe -Wall -Wp,-D_FORTIFY_SOURCE=2 -fexceptions -fstack-protector --p
 ----------------------------------------
 checking for crypt()
 
-/usr/bin/ld: /tmp/cccmbGpg.o: in function `main':
-/home/prabjot/Documents/nginx_alter/nginx-dynamic-load-balancing/objs/autotest.c:7: undefined reference to `crypt'
+/usr/bin/ld: /tmp/ccMJRUQI.o: in function `main':
+/home/ubuntu/multiversioning-dynamic-load-balancing/objs/autotest.c:7: undefined reference to `crypt'
 collect2: error: ld returned 1 exit status
 ----------
 
@@ -302,6 +302,28 @@ checking for statvfs()
 
 ----------------------------------------
 checking for dlopen()
+
+/usr/bin/ld: /tmp/ccl9hZsR.o: in function `main':
+/home/ubuntu/multiversioning-dynamic-load-balancing/objs/autotest.c:7: undefined reference to `dlopen'
+/usr/bin/ld: /home/ubuntu/multiversioning-dynamic-load-balancing/objs/autotest.c:7: undefined reference to `dlsym'
+collect2: error: ld returned 1 exit status
+----------
+
+#include <sys/types.h>
+#include <unistd.h>
+#include <dlfcn.h>
+
+int main(void) {
+    dlopen(NULL, RTLD_NOW | RTLD_GLOBAL); dlsym(NULL, "");
+    return 0;
+}
+
+----------
+cc -O2 -g -pipe -Wall -Wp,-D_FORTIFY_SOURCE=2 -fexceptions -fstack-protector --param=ssp-buffer-size=4 -m64 -mtune=generic -D_GNU_SOURCE -D_FILE_OFFSET_BITS=64 -o objs/autotest objs/autotest.c
+----------
+
+----------------------------------------
+checking for dlopen() in libdl
 
 
 ----------------------------------------
@@ -603,8 +625,8 @@ objs/autotest.c: In function 'main':
 objs/autotest.c:7:5: warning: implicit declaration of function 'setproctitle' [-Wimplicit-function-declaration]
     7 |     setproctitle("test");;
       |     ^~~~~~~~~~~~
-/usr/bin/ld: /tmp/ccYHSCFu.o: in function `main':
-/home/prabjot/Documents/nginx_alter/nginx-dynamic-load-balancing/objs/autotest.c:7: undefined reference to `setproctitle'
+/usr/bin/ld: /tmp/ccIKiixm.o: in function `main':
+/home/ubuntu/multiversioning-dynamic-load-balancing/objs/autotest.c:7: undefined reference to `setproctitle'
 collect2: error: ld returned 1 exit status
 ----------
 
@@ -628,19 +650,6 @@ checking for pread()
 ----------------------------------------
 checking for pwrite()
 
-objs/autotest.c: In function 'main':
-objs/autotest.c:7:33: warning: 'buf' is used uninitialized [-Wuninitialized]
-    7 |     char buf[1]; ssize_t n; n = pwrite(1, buf, 1, 0);
-      |                                 ^~~~~~~~~~~~~~~~~~~~
-In file included from /usr/include/features.h:486,
-                 from /usr/include/x86_64-linux-gnu/sys/types.h:25,
-                 from objs/autotest.c:2:
-/usr/include/unistd.h:408:16: note: in a call to 'pwrite' declared with attribute 'access (read_only, 2, 3)' here
-  408 | extern ssize_t __REDIRECT (pwrite, (int __fd, const void *__buf,
-      |                ^~~~~~~~~~
-objs/autotest.c:7:10: note: 'buf' declared here
-    7 |     char buf[1]; ssize_t n; n = pwrite(1, buf, 1, 0);
-      |          ^~~
 
 ----------------------------------------
 checking for pwritev()
@@ -650,10 +659,37 @@ checking for pwritev()
 checking for strerrordesc_np()
 
 objs/autotest.c: In function 'main':
-objs/autotest.c:7:16: warning: assignment discards 'const' qualifier from pointer target type [-Wdiscarded-qualifiers]
+objs/autotest.c:7:18: warning: implicit declaration of function 'strerrordesc_np' [-Wimplicit-function-declaration]
+    7 |     char *p; p = strerrordesc_np(0);
+      |                  ^~~~~~~~~~~~~~~
+objs/autotest.c:7:16: warning: assignment to 'char *' from 'int' makes pointer from integer without a cast [-Wint-conversion]
     7 |     char *p; p = strerrordesc_np(0);
       |                ^
+/usr/bin/ld: /tmp/ccEai10k.o: in function `main':
+/home/ubuntu/multiversioning-dynamic-load-balancing/objs/autotest.c:7: undefined reference to `strerrordesc_np'
+collect2: error: ld returned 1 exit status
+----------
 
+#include <sys/types.h>
+#include <unistd.h>
+#include <string.h>
+
+int main(void) {
+    char *p; p = strerrordesc_np(0);
+                  if (p == NULL) return 1;
+    return 0;
+}
+
+----------
+cc -O2 -g -pipe -Wall -Wp,-D_FORTIFY_SOURCE=2 -fexceptions -fstack-protector --param=ssp-buffer-size=4 -m64 -mtune=generic -D_GNU_SOURCE -D_FILE_OFFSET_BITS=64 -o objs/autotest objs/autotest.c
+----------
+
+----------------------------------------
+checking for sys_nerr
+
+/usr/bin/ld: /tmp/cc59P0Yi.o: in function `printf':
+/usr/include/x86_64-linux-gnu/bits/stdio2.h:107: warning: `sys_nerr' is deprecated; use `strerror' or `strerror_r' instead
+135
 ----------------------------------------
 checking for localtime_r()
 
@@ -684,6 +720,30 @@ checking for System V shared memory
 
 ----------------------------------------
 checking for POSIX semaphores
+
+/usr/bin/ld: /tmp/ccn0zkZQ.o: in function `main':
+/home/ubuntu/multiversioning-dynamic-load-balancing/objs/autotest.c:8: undefined reference to `sem_init'
+/usr/bin/ld: /home/ubuntu/multiversioning-dynamic-load-balancing/objs/autotest.c:9: undefined reference to `sem_destroy'
+collect2: error: ld returned 1 exit status
+----------
+
+#include <sys/types.h>
+#include <unistd.h>
+#include <semaphore.h>
+
+int main(void) {
+    sem_t  sem;
+                  if (sem_init(&sem, 1, 0) == -1) return 1;
+                  sem_destroy(&sem);;
+    return 0;
+}
+
+----------
+cc -O2 -g -pipe -Wall -Wp,-D_FORTIFY_SOURCE=2 -fexceptions -fstack-protector --param=ssp-buffer-size=4 -m64 -mtune=generic -D_GNU_SOURCE -D_FILE_OFFSET_BITS=64 -o objs/autotest objs/autotest.c
+----------
+
+----------------------------------------
+checking for POSIX semaphores in libpthread
 
 
 ----------------------------------------
@@ -752,10 +812,6 @@ checking for openat(), fstatat()
 
 ----------------------------------------
 checking for getaddrinfo()
-
-
-----------------------------------------
-checking for PCRE2 library
 
 
 ----------------------------------------

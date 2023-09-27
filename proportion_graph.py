@@ -9,7 +9,7 @@ proportion = []
 bar_width = 0.5
 y_height = 0
 
-f = open("/var/log/nginx/usage.csv", "r")
+f = open("/home/ubuntu/usage_og3.csv", "r")
 interval = -1
 start = -1
 curr = 1
@@ -42,6 +42,15 @@ for line in f:
     y_height = max(y_height, int(data[1]))
     y_height = max(y_height, int(data[2]))
 f.close()
+
+
+periods = len(x)
+x_tick_modulus = periods // 15
+
+for i in range(len(x)):
+    if i%x_tick_modulus != 0:
+        x[i] = ''
+
 
 m1_t = pandas.DataFrame({
     'heavy': req_h,

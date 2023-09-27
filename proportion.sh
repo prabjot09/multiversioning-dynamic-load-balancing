@@ -11,7 +11,7 @@ old_l=$(cat /var/log/nginx/access.log | grep v:2 | wc -l)
 
 while [ : ]
 do 
-    sleep 10
+    sleep 4
     tot_h=$(cat /var/log/nginx/access.log | grep v:4 | wc -l)
     tot_l=$(cat /var/log/nginx/access.log | grep v:2 | wc -l)
     

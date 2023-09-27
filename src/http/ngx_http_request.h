@@ -376,6 +376,9 @@ typedef void (*ngx_http_event_handler_pt)(ngx_http_request_t *r);
 
 typedef struct custom_versioned_server_s custom_versioned_server_t;
 typedef struct req_time_s req_time_t;
+typedef struct int_list_s int_list_t;
+typedef struct probability_distribution_s probability_distribution_t;
+typedef struct old_requests_s old_requests_t;
 
 struct custom_versioned_server_s {
    ngx_int_t			            id;
@@ -402,14 +405,42 @@ struct custom_versioned_server_s {
    req_time_t                       **req_times;
    req_time_t                       **req_tail;
    
+   probability_distribution_t        *basic_probability;
+   probability_distribution_t        *rt_probability;
+   
+   old_requests_t                    *old_requests;
+   
    ngx_atomic_t			            *lock;
 };
 
 struct req_time_s {
-    ngx_int_t			    sec;
+    ngx_int_t			                  sec;
     ngx_int_t                       msec;
+    ngx_int_t                       no;
     req_time_t                      *next;
     req_time_t                      *tail;    
+};
+
+struct int_list_s {
+    float                 val;
+    int_list_t           *next;
+};
+
+struct probability_distribution_s {
+    int_list_t          **list_head;
+    int_list_t          **list_tail;
+    ngx_int_t             sum;
+    float                 squared_error_sum;
+    ngx_int_t             size_count;
+};
+
+struct old_requests_s {
+     ngx_int_t            time_sum;
+     ngx_int_t            req_count;
+     req_time_t          *recent_req;
+     ngx_int_t            recent_req_num;
+     ngx_int_t            updated_sec;
+     ngx_int_t            updated_msec;
 };
 
 
@@ -418,15 +449,17 @@ struct ngx_http_request_s {
 
     ngx_connection_t                 *connection;
     
-    custom_versioned_server_t         *light;
-    custom_versioned_server_t         *heavy;
-    custom_versioned_server_t         *version;
+    custom_versioned_server_t        *light;
+    custom_versioned_server_t        *heavy;
+    custom_versioned_server_t        *version;
     ngx_int_t                         req_finish_before;
-    ngx_int_t 			      predict;
-    ngx_int_t 			      no;
-    ngx_int_t			      last_complete;
-    req_time_t			      *enter_time;
-    float 			      arrival_load;
+    ngx_int_t 			                  predict;
+    ngx_int_t 			                  no;
+    ngx_int_t			                    last_complete;
+    req_time_t			                 *enter_time;
+    float 			                      arrival_load;
+    
+    float                             service_time_record;
 
     void                            **ctx;
     void                            **main_conf;

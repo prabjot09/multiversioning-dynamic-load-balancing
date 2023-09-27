@@ -84,9 +84,13 @@ struct ngx_http_upstream_rr_peers_s {
 
     ngx_http_upstream_rr_peer_t    *peer;
     
-    ngx_int_t       			    log_time;
+    ngx_int_t           			      log_time_sec;
+    ngx_int_t                       log_time_msec;
     ngx_int_t                       max_req;
     ngx_int_t                       active_req;
+    ngx_int_t                       req_count;
+    float                           avg_active_req;
+    float                           avg_req_var;
 };
 
 

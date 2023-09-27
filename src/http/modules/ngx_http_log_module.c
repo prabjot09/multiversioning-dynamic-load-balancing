@@ -8,6 +8,7 @@
 #include <ngx_config.h>
 #include <ngx_core.h>
 #include <ngx_http.h>
+#include <math.h>
 
 #if (NGX_ZLIB)
 #include <zlib.h>
@@ -844,7 +845,7 @@ ngx_http_log_request_time(ngx_http_request_t *r, u_char *buf,
     float   ms;
     float a;
     
-    a = 0.01;
+    a = 0.005;
     
     tp = ngx_timeofday();
 
@@ -854,15 +855,15 @@ ngx_http_log_request_time(ngx_http_request_t *r, u_char *buf,
     
     if (r->version != NULL) {
     	//ngx_rwlock_wlock(r->version->lock);
-    	ngx_http_upstream_rr_peer_data_t * rrp = r->upstream->peer.data;
+    	  ngx_http_upstream_rr_peer_data_t * rrp = r->upstream->peer.data;
         ngx_http_upstream_rr_peers_wlock(rrp->peers);
         
         ngx_int_t monitor = 0;
-        if (rrp->peers->log_time == -1) {
-            rrp->peers->log_time = ngx_time();
+        if (rrp->peers->log_time_sec == -1) {
+            rrp->peers->log_time_sec = tp->sec;
+            rrp->peers->log_time_msec = tp->msec;
         }
-        else if (ngx_time() - rrp->peers->log_time >= 5) {
-            rrp->peers->log_time = ngx_time();
+        else if (ngx_time() - rrp->peers->log_time_sec >= 15) {
             monitor = 1;
         }
         
@@ -870,8 +871,8 @@ ngx_http_log_request_time(ngx_http_request_t *r, u_char *buf,
         r->version->active_req -= 1;
         rrp->peers->active_req -= 1;
         r->version->latest = r->no;
-        ngx_int_t start_s = r->enter_time->sec;
-        ngx_int_t start_ms = r->enter_time->msec;
+        //ngx_int_t start_s = r->enter_time->sec;
+        //ngx_int_t start_ms = r->enter_time->msec;
         r->enter_time->sec = -1;
         r->enter_time->msec = -1;
         
@@ -881,6 +882,89 @@ ngx_http_log_request_time(ngx_http_request_t *r, u_char *buf,
         r->version->service_time_update_sec = tp->sec;
         r->version->service_time_update_msec = tp->msec;
         
+        probability_distribution_t * basic_prob = r->version->basic_probability;
+        int_list_t * list_node = (int_list_t *) malloc(sizeof(int_list_t));
+        list_node->val = (r->version->completed_requests < r->req_finish_before ?
+                           (float) ms / (r->version->completed_requests - r->req_finish_before + r->version->req_upper_bound) :
+                           (float) ms / ngx_max(1, r->version->completed_requests - r->req_finish_before)) 
+                         - (float) r->version->predicted_avg_rt;
+        list_node->val = list_node->val * list_node->val;
+        list_node->next = NULL;
+                          
+        if (basic_prob->size_count == 0) {
+            *(basic_prob->list_head) = list_node;
+            *(basic_prob->list_tail) = list_node;
+            list_node->val = 0;
+        }
+        else {
+            (*(basic_prob->list_tail))->next = list_node;
+            *(basic_prob->list_tail) = list_node;
+        }
+        
+        basic_prob->squared_error_sum += list_node->val;
+        
+        if (basic_prob->size_count >= 200) {
+            basic_prob->squared_error_sum -= (*(basic_prob->list_head))->val;
+            int_list_t * tmp = *(basic_prob->list_head);
+            *(basic_prob->list_head) = (*(basic_prob->list_head))->next;
+            free(tmp);
+        }
+        else {
+            basic_prob->size_count += 1;
+        }
+        
+        
+        old_requests_t * oldest = r->version->old_requests;
+        if (oldest->recent_req != NULL && (r->no <= oldest->recent_req_num || r->no > r->version->completed_requests + r->version->active_req)) {
+            oldest->time_sum -= 1000*(oldest->updated_sec - r->start_sec) + (oldest->updated_msec - r->start_msec);
+            oldest->req_count -= 1;
+            if (oldest->req_count == 0) {
+                oldest->recent_req = NULL;
+            }
+        }
+        oldest->time_sum += oldest->req_count * ( 1000*(tp->sec - oldest->updated_sec) + (tp->msec - oldest->updated_msec) );
+        oldest->updated_sec = tp->sec;
+        oldest->updated_msec = tp->msec;
+        
+        
+        ngx_int_t multiple = 0;
+        while (oldest->req_count < 0.2 * r->version->active_req) {
+            if (oldest->recent_req == NULL) {
+                req_time_t ** req_list = r->version->req_times;
+                if ((*req_list)->sec == -1) {
+                    req_time_t * removed = *req_list;
+                    *req_list = removed->next;
+                    free(removed);
+                }
+                else {
+                    oldest->req_count += 1;
+                    oldest->time_sum += 1000*(oldest->updated_sec - (*req_list)->sec) + (oldest->updated_msec - (*req_list)->msec);
+                    oldest->recent_req = *req_list;
+                    oldest->recent_req_num = (*req_list)->no;
+                }
+            }
+            else {
+                multiple = 1;
+                //oldest->req_count += 1;
+                req_time_t * curr = oldest->recent_req;
+                //if (curr->next == NULL) {
+                //    oldest->req_count += 1;
+                //    continue;
+                //}
+                
+                if (curr->next->sec == -1) {
+                    req_time_t * removed = curr->next;
+                    curr->next = curr->next->next;
+                    free(removed);
+                }
+                else {
+                    oldest->req_count += 1;
+                    oldest->time_sum += 1000*(oldest->updated_sec - curr->next->sec) + (oldest->updated_msec - curr->next->msec);
+                    oldest->recent_req = curr->next;
+                    oldest->recent_req_num = curr->next->no; 
+                }
+            }
+        }  
         
         if (r->version->completed_requests < 100) {
             float b = 1 - (1 / (float) r->version->completed_requests);
@@ -896,23 +980,31 @@ ngx_http_log_request_time(ngx_http_request_t *r, u_char *buf,
     	r->version->max_prediction = ngx_max(r->version->max_prediction, r->version->predicted_avg_rt);
     	
     	
-        char * c = NULL;        
-        if (monitor) {
+        char * c = NULL;     
+        if (monitor == 1) {
             c = custom_system_monitor_capacity(rrp->peers);
             //r->version->max_prediction = r->version->predicted_avg_rt;
         }
         
-        ngx_http_upstream_rr_peers_unlock(rrp->peers);
-    	u_char * res =  ngx_sprintf(buf, "custom: %T.%03M avg:%.3f predict:%i, before:%i number:%i active:%i complete:%i latest:%i v:%i (%s:%i) (%T.%03M)  - service:%i \n%s", 
+    	/*u_char * res =  ngx_sprintf(buf, "custom: %T.%03M avg:%.3f predict:%i, before:%i number:%i active:%i complete:%i latest:%i v:%i (%s:%i) (%T.%03M)  - service:%i \n%s", 
     	               (int) ms / 1000, (int) ms % 1000, r->version->predicted_avg_rt, r->predict, r->req_finish_before, r->no, 
     	               r->no - r->req_finish_before, r->version->completed_requests, r->last_complete, r->version->id, r->version->ip, 
     	               r->version->port,
     	               (int) ((ngx_msec_int_t) ((tp->sec - start_s) * 1000 + (tp->msec - start_ms))) / 1000,
     	               (int) ((ngx_msec_int_t) ((tp->sec - start_s) * 1000 + (tp->msec - start_ms))) % 1000,
-    	               r->version->service_time, c ? c : "");
-    	               
+    	               r->version->service_time, c ? c : "");*/
+                                   
+      u_char * res = ngx_sprintf(buf, "custom: %T.%03M avg:%.3f var1:%.3f oldest:%.3f predict:%.3f service:%.3f active:%d (%d) v:%i(:%i) %.2f %.2f %d \n%s", 
+                     (int) ms / 1000, (int) ms % 1000, r->version->predicted_avg_rt,
+                     sqrt((float) r->version->basic_probability->squared_error_sum / (float) r->version->basic_probability->size_count),
+                     ((float) r->version->old_requests->time_sum)/(float) ngx_max(1, r->version->old_requests->req_count), (float)r->predict, 
+                     //(float) r->version->old_requests->time_sum,
+                     r->service_time_record, r->version->active_req, multiple, r->version->id, r->version->port, 
+                     rrp->peers->log_time_sec + rrp->peers->log_time_msec/1000.0, tp->sec + tp->msec/1000.0, rrp->peers->req_count, c ? c : "");	               
     	//u_char * res =  ngx_sprintf(buf, "%s", c ? c : "");
-    	               
+    	
+      ngx_http_upstream_rr_peers_unlock(rrp->peers);
+                       
     	if (c) {
     	    free(c);
     	}
@@ -929,8 +1021,11 @@ custom_system_monitor_capacity(ngx_http_upstream_rr_peers_t * peers)
 {
     ngx_http_upstream_rr_peer_t     *peer;
     ngx_int_t                        i, pt;
+    ngx_time_t                      *tp;
     
     pt = 0;
+    tp = ngx_timeofday();
+    
     for (peer = peers->peer, i = 0;
          peer;
          peer = peer->next, i++) {
@@ -944,6 +1039,12 @@ custom_system_monitor_capacity(ngx_http_upstream_rr_peers_t * peers)
         return "[Issue] Performance Target Not Set!";
     }
     
+    float avg_arrival_rate = (peers->req_count) / (tp->sec + tp->msec/1000.0 - peers->log_time_sec - peers->log_time_msec/1000.0);
+    
+    peers->log_time_sec = tp->sec;
+    peers->log_time_msec = tp->msec;
+    peers->req_count = 0;
+    
     float capacity = 0;
     char *res = malloc(sizeof(char) * 1000);
     *res = '\0';
@@ -956,29 +1057,35 @@ custom_system_monitor_capacity(ngx_http_upstream_rr_peers_t * peers)
         char *tmp = malloc(sizeof(char) * 100); 
         *tmp = '\0';
         if (peer->version->predicted_avg_rt != 0) {
-            capacity += (float) pt / peer->version->predicted_avg_rt;
+            //float dev = sqrt((float) peer->version->basic_probability->squared_error_sum / (float) peer->version->basic_probability->size_count);
+            capacity += (float) pt / (peer->version->predicted_avg_rt);
             sprintf(tmp, "server:(%s:%d)-%.2f,", peer->version->ip, (int) peer->version->port, (float) pt / peer->version->predicted_avg_rt);
         }
         strcat(res, tmp);
         free(tmp);
     }
     
-    int capacity_int = (int) capacity;
-    char *tmp = malloc(sizeof(char) * 100);
+    
+    //float avg_load = peers->avg_active_req + sqrt(peers->avg_req_var);
+    
+    char *tmp = malloc(sizeof(char) * 200);
     *tmp = '\0';
-    sprintf(tmp, "total:%d,request_load:%d", capacity_int, (int) peers->max_req);
+    sprintf(tmp, "total:%.2f,request_load:%d,arrival_rate:%.2f", capacity, (int) peers->max_req, avg_arrival_rate);
     strcat(res, tmp);
     //strcat(res, "%stotal:%d,request_load:%d", res, capacity_int, (int) peers->max_req);
     free(tmp);
     
+    /*
     char *empty = NULL;
     if ((int) peers->max_req == 0) {
         free(res);
         res = empty;
     }
+    */
     
     peers->max_req = 0;
     return res;
+    
 }
 
 

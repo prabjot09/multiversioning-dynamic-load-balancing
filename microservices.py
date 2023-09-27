@@ -153,6 +153,7 @@ class System:
     def __init__(self, heavy=[], light=[]):
         self.heavy = heavy
         self.light = light
+        self.load_history = []
     
     def buildConfigData(self, pt):
         servers = []
@@ -200,10 +201,21 @@ class System:
         sock.close()
         return port
         
-    def calculateScaling(self, data, config):
+    def calculateScaling(self, data, config, pt):
         max_scale = config.max_replicas
         load = data["conc_requests"]
         capacity = data["total_capacity"]
+        
+        self.load_history.append(load)
+        if len(self.load_history) > 2:
+          self.load_history = self.load_history[1:]
+        #arrival_rate = data["arrival_rate"]
+        
+        predict_load = self.load_history[0]
+        if len(self.load_history) == 2:
+          predict_load = (predict_load + self.load_history[1]) / 2
+        
+        completion_rate = capacity * (1000 / pt)
         
         servers = dict()
         for server in data["servers"]:
@@ -211,17 +223,17 @@ class System:
             servers[key] = float(server["capacity"])
             
         self.updateCapacities(servers)
-        delta, deltaServer = self.getMinDownscaleDelta()
+        delta, deltaServer = self.getMinDownscaleDelta(pt)
         
         upscale, downscale, server = (0, 0, None)
-        if load > 0.9 * capacity and len(self.light) < max_scale:
+        if (predict_load > 0.9 * capacity) and len(self.light) < max_scale:
             upscale = 1
             if len(self.heavy) + len(self.light) == max_scale:
                 for h in self.heavy:
                     if server == None or h.capacity_h < server.capacity_h:
                         server = h
                 
-        elif (load == 0 or load < 0.9 * (capacity - delta)) and (len(self.heavy) > 1 or len(self.light) > 0):
+        elif (predict_load == 0 or predict_load < 0.9 * (capacity - delta)) and (len(self.heavy) > 1 or len(self.light) > 0):
             downscale = 1
             server = deltaServer
         
@@ -241,7 +253,7 @@ class System:
         
         return
         
-    def getMinDownscaleDelta(self):
+    def getMinDownscaleDelta(self, pt):
         min_delta = -1
         server = None
         
@@ -474,7 +486,7 @@ if __name__ == '__main__':
     while configServerPort == nginxPort:
         configServerPort = system.getFreePort()
     
-    nginx_img = "prabjotd09/nginx-dynamic:v4"
+    nginx_img = "prabjotd09/nginx-dynamic:v6"
     
     for env_var in env:
         key, val = env_var.split("=")
@@ -520,14 +532,15 @@ if __name__ == '__main__':
                 
                 no_user_data["servers"] = no_user_servers
                 no_user_data["total_capacity"] = capacity
-                no_user_data["conc_requests"] = 0
+                no_user_data["conc_requests"] = 0.0
+                no_user_data["arrival_rate"] = 0.0
                 
-                for i in range(lb_client.interval // 5):
+                for i in range(lb_client.interval // 15):
                     monitor_data.append(no_user_data)
             
             scale_decision = None
             for entry in monitor_data:
-                up, down, target_server = system.calculateScaling(entry, sysConfig)
+                up, down, target_server = system.calculateScaling(entry, sysConfig, sysConfig.pt)
                 print("Update: {},{}->{}".format(up, down, target_server))
                 
                 scale_decision = sysConfig.applyScalingData(up, down)
@@ -551,7 +564,21 @@ if __name__ == '__main__':
             
     except KeyboardInterrupt:
         print("Shutting Down Microservice")
+        stop = lambda server : server.shutdown()
         
+        for l in system.light:
+            stop_thread = threading.Thread(target=stop, args=(l,))
+            stop_thread.start()
+        for h in system.heavy:
+            stop_thread = threading.Thread(target=stop, args=(h,))
+            stop_thread.start()
+        
+        def terminate(cont):
+            cont.stop()
+            cont.remove()
+            
+        stop_thread = threading.Thread(target=terminate, args=(nginx_container,))
+        stop_thread.start()
     #TODO: Shut down all containers 
     
             

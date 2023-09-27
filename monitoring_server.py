@@ -75,10 +75,13 @@ class CustomServer(BaseHTTPRequestHandler):
                     resp_entry["servers"] = servers
                     
                 elif values[0] == "total":
-                    resp_entry["total_capacity"] = int(values[1])
+                    resp_entry["total_capacity"] = float(values[1])
                
                 elif values[0] == "request_load":
-                    resp_entry["conc_requests"] = int(values[1])  
+                    resp_entry["conc_requests"] = float(values[1])  
+                    
+                elif values[0] == "arrival_rate":
+                    resp_entry["arrival_rate"] = float(values[1])
             
             resp.append(resp_entry)
                      
