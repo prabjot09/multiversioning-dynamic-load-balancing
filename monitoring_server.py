@@ -4,6 +4,15 @@ from time import time, localtime
 
 import os
 
+'''
+Convert the provided time into a proper format
+
+Parameters: (h, m, s)
+- Can take negative values or values higher than permissible (Ex: s = 90)
+
+Return Value: (h, m, s)
+- Returns properly formatted time (h = [0,23], m = [0,59], s =[0,59])
+'''
 def normalize_time(h, m, s):
     if s < 0:
        s += 60
@@ -30,7 +39,16 @@ def normalize_time(h, m, s):
     return (h, m, s)
            
 
+'''
+Monitor Server
+
+Has 2 acceptable Requests:
+- GET /monitor?s={time},    where time is an integer.
+- POST /lb-config,          (requires JSON file in body)
+'''
 class CustomServer(BaseHTTPRequestHandler):
+    
+    # Response to GET request
     def do_GET(self):
         if '/monitor' not in self.path:
             self.send_response(404)
@@ -43,6 +61,7 @@ class CustomServer(BaseHTTPRequestHandler):
         now = localtime(time())
         h, m, s = now.tm_hour, now.tm_min, now.tm_sec
         
+        # START: Retrieve data from NGINX access.log file for past `interval` seconds.
         s-= interval
         for i in range(interval):
             h, m, s = normalize_time(h, m, s)
@@ -52,7 +71,10 @@ class CustomServer(BaseHTTPRequestHandler):
             
             cmd = os.system("cat /var/log/nginx/access.log | grep \"System State\" | grep \"{:02d}:{:02d}:{:02d}\" {} ./system_status.txt".format(h, m, s, output))
             s += 1
+        # END: Retrieve data from NGINX access.log file for past `interval` seconds.
         
+        
+        # START: Parse the retrieved data stored in a temporary `./system_status.txt` file.
         resp = []
         f = open("./system_status.txt", "r")
         for line in f:
@@ -84,15 +106,17 @@ class CustomServer(BaseHTTPRequestHandler):
                     resp_entry["arrival_rate"] = float(values[1])
             
             resp.append(resp_entry)
-                     
+        # END: Parse the retrieved data stored in a temporary `./system_status.txt` file.             
         
+        
+        # Send the parsed data as response.
         self.send_response(200)
         self.send_header('Content-type', 'application/json')
         self.end_headers()
         self.wfile.write(stringify(resp).encode('utf-8'))
          
-         
 
+    # Response to POST request
     def do_POST(self):
         if self.path != '/lb-config':
             self.send_response(404)
@@ -102,6 +126,7 @@ class CustomServer(BaseHTTPRequestHandler):
         post_data = self.rfile.read(content_length)
         post_data = parse(post_data.decode('utf-8'))
         
+        # Update NGINX with new configuration
         self.build_conf(post_data)
         print("Reconfiguring NGINX with config data: ", post_data)
         
@@ -110,7 +135,19 @@ class CustomServer(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write("POST req for {}\n".format(self.path).encode('utf-8'))
                 
-        
+      
+    '''
+    Build the new NGINX configuration file and restarts NGINX to apply configuration changes.
+    
+    Parameter:
+    - data : The data containing information about the new configuration.
+         Format - JSON:
+         [
+             {"server": (string - IP address), "port": (int - port #), "type": (string - 'heavy' or 'light'), "pt": (int - performance target, Can be empty)},
+             ...,
+             ... (One for each server)
+         ]
+    '''  
     def build_conf(self, data):
         conf = "worker_processes  1;\n"
         conf += "events { \n\tworker_connections  1024; \n}\n"
@@ -119,6 +156,7 @@ class CustomServer(BaseHTTPRequestHandler):
         conf += "\taccess_log  /var/log/nginx/access.log  main;\n"
         conf += "\n\tupstream backend { \n"
         
+        # Build the configuration file for each server
         for server in data:
             weight = 7
             if server['type'] == "heavy":
@@ -141,11 +179,14 @@ class CustomServer(BaseHTTPRequestHandler):
         
         conf += "}\n"
         
+        # Write the configuration into a temporary file
         f = open("./nginx.conf", "w")
         f.write(conf)
         f.close()
         
+        # Copy the config in temporary file to the actual NGINX configuration file
         os.system("cp ./nginx.conf /etc/nginx/nginx.conf")
+        # Apply configuration by restarting NGINX
         reloaded = os.system("nginx -s reload")
         
         if reloaded != 0:
@@ -154,7 +195,7 @@ class CustomServer(BaseHTTPRequestHandler):
         return
         
         
-
+# Starts the server
 if __name__ == '__main__':
     server_address = ('', 8080)
     httpd = HTTPServer(server_address, CustomServer)

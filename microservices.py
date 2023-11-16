@@ -5,6 +5,7 @@ import requests
 import threading
 from time import time, localtime, sleep
 
+# Linked List Node Objects
 class ListNode:
     def __init__(self, val=-1):
         self.val = val
@@ -14,6 +15,12 @@ class ListNode:
     def __str__(self):
         return "({})".format(self.val)
 
+'''
+ Linked List Class
+ - Maintains a certain maximum size n
+ - Records the recent history of a value across past n time intervals.
+ - Order: Most recent to oldest.
+'''
 class IntLinkedList:
     def __init__(self, max_len):
         self.size = 0
@@ -56,9 +63,17 @@ class IntLinkedList:
                 
         return res
 
+'''
+Service Version Description Class
+ - Stores information common across all instances of a service
+ - image: The Docker image of this version
+ - env: Environment variables to launch a container of this version
+ - resources: How many resources allocated to each instance of this version
+ - innerPort: The port inside the container listening to requests.
+'''
 class VersionDefinition:    
     def __init__(self, image, env, resources, port):
-        self.image = image
+        self.image = image        
         self.env = env
         self.resources = resources
         self.innerPort = port
@@ -71,6 +86,18 @@ class VersionDefinition:
         return res 
 
 
+'''
+User-defined Configuration for the service as a whole
+
+- heavy_description: Stores the VersionDefinition object of HW version.
+- light_description: Stores the VersionDefinition object of LW version.
+- pt: Performance SLA (desired maximum response time - milliseconds)
+- max_replicas: Maximum number of total instances allowed to be deployed. 
+
+- scale_up: Linked List recording history of scaling outs. Where 1 indicated that service wanted to scale out during that interval, and 0 indicates opposite.
+- scale_down: Linked List recording history of scaling outs. Where 1 indicated that service wanted to scale in during that interval, and 0 indicated opposite.
+Note: No difference between scale_down6 and scale_down24 (their specific functions were removed)
+'''
 class Configuration:
     network = None
     
@@ -96,18 +123,23 @@ class Configuration:
         self.scale_down6.add(down_on)
         print("{}\n{}\n{}\n".format(self.scale_up, self.scale_down24, self.scale_down6))
         
+        # [Subject to Change]
+        # Logic: Wait 2 intervals before being sure to scale out.
+        #        Wait 3 intervals before being sure to scale in.
         doUpscale, doDownscale = (False, False)
         if self.scale_up.count == 2:
             doUpscale = True
-        elif self.scale_down6.count == 6 and self.scale_down24.count > 20:
+        elif self.scale_down6.count == 3:
             doDownscale = True
         
         return {"upscale": doUpscale, "downscale": doDownscale}
         
     
+    # Records a scaling up decision
     def applyUpscale(self):
         self.scale_up = IntLinkedList(2)
     
+    # Records a scaling in decision
     def applyDownscale(self):
         for i in range(6):
             self.scale_down6.add(0)
@@ -120,6 +152,15 @@ class Configuration:
         return res
         
         
+'''
+Represents a running container (aka server)
+
+- ip, port: Forms the address of the container
+- container: Docker container object. Can be used to start, stop, modify the container.
+- capacity_h: The ideal maximum number of users this heavyweight container can serve simultaneously while maintaining SLA.
+- capacity_l: Same as capacity_h, but records capacity when this server is lightweight.
+
+'''
 class ServerDescription:
     def __init__(self, ip, port, container, c_h=0.0, c_l=0.0, isHeavy=True):
         self.ip = ip
@@ -129,12 +170,17 @@ class ServerDescription:
         self.capacity_l = c_l
         self.isHeavy = isHeavy
     
+    # The reduction of servicable concurrent users if this container is scaled in.
+    #     If container is heavyweight - The loss of shutting down this container.
+    #     If container is lightweight - The loss of turning this server into a heavyweight.
     def capacityDelta(self):
         if self.isHeavy:
             return self.capacity_h
         
         return self.capacity_l - self.capacity_h
         
+        
+    # Stop the container and remove it.    
     def shutdown(self):
         self.container.stop()
         self.container.remove()
@@ -147,7 +193,16 @@ class ServerDescription:
         return res
 
 
+'''
+Represents the state of the whole microservice.
+
+- heavy: A list of the heavyweight containers deployed
+- light: A list of the lightweight containers deployed
+- load_history: Records the load on the service during the past 2 time intervals.
+'''
 class System:
+
+    # Log File: Records timestamped configurations of heavyweight and lightweight containers 
     data_file = "./deployments.csv"
 
     def __init__(self, heavy=[], light=[]):
@@ -155,6 +210,9 @@ class System:
         self.light = light
         self.load_history = []
     
+    
+    # Builds an object that includes all necessary information to build the NGINX configuration file.
+    # - Records the address and version of each running container as well as the performance target (pt)
     def buildConfigData(self, pt):
         servers = []
         for s in self.heavy:
@@ -176,12 +234,16 @@ class System:
         servers[0]["pt"] = pt
         return servers
     
+    
+    # Wipes the records in microservice log file
     def clearLogs(self):
         f = open(self.data_file, "w")
         f.write("")
         f.close()
         return
     
+    
+    # Logs the current time and the current configuration of lightweight/heavyweight instances.
     def logDeployments(self, load):
         f = open(self.data_file, "a")
         
@@ -193,7 +255,8 @@ class System:
         f.close()
         return
         
-        
+    
+    # Finds an unused port on this device
     def getFreePort(self):
         sock = socket.socket()
         sock.bind(('', 0))
@@ -201,45 +264,81 @@ class System:
         sock.close()
         return port
         
+    '''
+    Makes the decision to scale in/out using 'data' parameter
+    
+    Parameters
+    - data: The data recieved from the 'Monitor Server'
+        Format: 
+        {
+          "conc_requests": (int - # concurrent requests on microservice currently),
+          "total_capacity": (int - # concurrent requests that can be handled by microservice without violating SLA),
+          "servers": [
+              { "ip": (string - IP address), "port": (int - port #), "capacity": (float - capacity of this container/server) },
+              ...
+              ... (One object for each container) 
+          ],
+        }
+    - config: The Configuration object.
+    - pt: The performnace target
+    
+    Return Value: (upscale, downscale, server)
+    - upscale: 1 if scale-out, 0 otherwise
+    - downscale: 1 if scale-in, 0 otherwise
+    - server: The server/container that needs to be changed (if any)
+    '''
     def calculateScaling(self, data, config, pt):
         max_scale = config.max_replicas
         load = data["conc_requests"]
         capacity = data["total_capacity"]
         
+        # Record current load
         self.load_history.append(load)
         if len(self.load_history) > 2:
           self.load_history = self.load_history[1:]
-        #arrival_rate = data["arrival_rate"]
         
+        # Predict future load from previous 2 time intervals
         predict_load = self.load_history[0]
         if len(self.load_history) == 2:
           predict_load = (predict_load + self.load_history[1]) / 2
         
+        # Service rate of requests per second
         completion_rate = capacity * (1000 / pt)
         
+        # Parse 'data'
         servers = dict()
         for server in data["servers"]:
             key = "{}:{}".format(server["ip"], server["port"])
             servers[key] = float(server["capacity"])
             
+        
         self.updateCapacities(servers)
         delta, deltaServer = self.getMinDownscaleDelta(pt)
         
+        # Default Return Value
         upscale, downscale, server = (0, 0, None)
-        if (predict_load > 0.9 * capacity) and len(self.light) < max_scale:
+        
+        # Condition: Do we need to scale out?
+        if (predict_load > 0.9 * capacity) and len(self.light) < max_scale:  
             upscale = 1
-            if len(self.heavy) + len(self.light) == max_scale:
+            # Condition: Do we scale out by switching from heavy to lightweight?
+            if len(self.heavy) + len(self.light) == max_scale: 
                 for h in self.heavy:
                     if server == None or h.capacity_h < server.capacity_h:
                         server = h
-                
-        elif (predict_load == 0 or predict_load < 0.9 * (capacity - delta)) and (len(self.heavy) > 1 or len(self.light) > 0):
+                        
+        # Condition: Do we need to scale in?
+        elif (predict_load == 0 or predict_load < 0.9 * (capacity - delta)) and (len(self.heavy) > 1 or len(self.light) > 0): 
             downscale = 1
             server = deltaServer
         
         return (upscale, downscale, server)
             
     
+    # Updates the capacities of ServerDescription objects for each container
+    # 
+    # Parameters
+    # - servers: The most recent data from NGINX.
     def updateCapacities(self, servers):
         for h in self.heavy:
             key = "{}:{}".format(h.ip, h.port)
@@ -253,9 +352,24 @@ class System:
         
         return
         
+    
+    '''
+    Calculates the minimum loss in capacity for scaling in.
+    
+    Parameters
+    - pt : The performance target
+    
+    Return Value: (min_delta, server)
+    - min_delta: Loss in capacity for scaling in.
+    - server: The server that is the target for scaling in.
+    '''
     def getMinDownscaleDelta(self, pt):
         min_delta = -1
         server = None
+        
+        # Logic:
+        # First try to scale-in the lightweight instances. 
+        # If there are no lightweight instances, scale-in the heavyweight instances.
         
         if len(self.light) > 0:
             for l in self.light:
@@ -271,8 +385,21 @@ class System:
         
         return (min_delta, server)
         
-                
+    
+    '''    
+    Scale out the microservice
+    
+    Parameters:
+    - config: The Configuration object.
+    - server: The container that we want to scale-out to lightweight. If None, then just launch a new heavy-weight instance.
+    - dockerCli: The Docker Client used to run Docker commands
+    - lbClient: LoadBalancerClient object. Used to send requests to NGINX to update the configuration after scaling.
+    '''     
     def upscale(self, config, server, dockerCli, lbClient):
+        # Logic:
+        # If we haven't maxed out # replicas yet, then launch a new heavyweight container
+        # Otherwise, we switch a heavyweight container to lightweight.
+        
         if server == None:
             print("Launching new container")
             h_desc = config.heavy_description
@@ -287,6 +414,7 @@ class System:
             new_server = ServerDescription(self.heavy[0].ip, tmpPort, new_container)
             self.heavy.append(new_server)
             
+            # Update the NGINX configuration after 10 seconds to allow container slow start-up.
             def delayed_post(lbClient, data, server): 
                 sleep(10)
                 lbClient.POST_configData(data)
@@ -296,7 +424,7 @@ class System:
             config.applyUpscale()
             
         else:
-            print("Upscaling container {}, heavy->light".format(server.container.id))
+            print("Scaling-out container {}, heavy->light".format(server.container.id))
             l_desc = config.light_description
             tmpPort = self.getFreePort()
             
@@ -313,6 +441,7 @@ class System:
             self.light.append(new_server)
             self.heavy.remove(server)
             
+            # Update the NGINX configuration after 10 seconds to allow container slow start-up
             def delayed_post(lbClient, data, server): 
                 sleep(10)
                 lbClient.POST_configData(data)
@@ -320,6 +449,7 @@ class System:
             post_thread = threading.Thread(target=delayed_post, args=(lbClient, self.buildConfigData(config.pt), new_server))
             post_thread.start()
             
+            # Stop the old heavyweight container
             stop = lambda server : server.shutdown()
             stop_thread = threading.Thread(target=stop, args=(server,))
             stop_thread.start()
@@ -328,13 +458,27 @@ class System:
             config.applyUpscale()
             
         return
+      
         
+    '''    
+    Scale in the microservice
     
+    Parameters:
+    - config: The Configuration object.
+    - server: The container that we want to scale-in. If lightweight, then change to heavyweight. If heavyweight, then shutdown container entirely.
+    - dockerCli: The Docker Client used to run Docker commands.
+    - lbClient: LoadBalancerClient object. Used to send requests to NGINX to update the configuration after scaling.
+    '''  
     def downscale(self, config, server, dockerCli, lbClient):
+        # Logic:
+        # If we scale-in a heavyweight instance, then remove the container entirely.
+        # Otherwise, we switch a lightweight instance back down to heavyweight instance.
+        
         if server.isHeavy:
             print("Shutting down container {}".format(server.container.id))
             self.heavy.remove(server)
             
+            # Stop the old heavyweight container
             stop = lambda server : server.shutdown()
             stop_thread = threading.Thread(target=stop, args=(server,))
             stop_thread.start()
@@ -366,6 +510,7 @@ class System:
             post_thread = threading.Thread(target=delayed_post, args=(lbClient, self.buildConfigData(config.pt), new_server))
             post_thread.start()
             
+            # Stop the old lightweight container
             stop = lambda server : server.shutdown()
             stop_thread = threading.Thread(target=stop, args=(server,))
             stop_thread.start()
@@ -387,23 +532,33 @@ class System:
         return res
         
 
+'''
+Represents the 'Monitor Server' used to communicate with NGINX
+
+- interval: The interval between each GET request to monitor NGINX
+- GET_path: The path for sending GET requests
+- POST_path: The path for sending POST requests
+'''
 class LoadBalancerClient:
     GET_path="monitor?s="
     POST_path="lb-config"
     
-    interval = 45
+    interval = 15
     
     def __init__(self, target_ip, target_port):
         self.ip = target_ip
         self.port = target_port
         self.GET_path += str(self.interval)
     
+    
+    # Sends GET request: Response contains the new performance data from NGINX
     def GET_monitorData(self):
         url = "http://{}:{}/{}".format(self.ip, self.port, self.GET_path)
         print(url)
         r = requests.get(url=url)
         return r.json()
     
+    # Sends POST request: Updates the NGINX configuration.
     def POST_configData(self, data):
         url = "http://{}:{}/{}".format(self.ip, self.port, self.POST_path)
         r = requests.post(url=url, json=data)
@@ -413,10 +568,16 @@ class LoadBalancerClient:
 
 
 if __name__ == '__main__':
+
+    # Docker Image for NGINX load balancer
+    nginx_img = "prabjotd09/nginx-dynamic:v6-5"
+    
     args = sys.argv[1:]
     
+    # Docker Client object to run Docker commands
     client = docker.from_env()
     
+    # START: Parse the script command
     env = []
     index = 0
     while args[index] == "e":
@@ -459,15 +620,19 @@ if __name__ == '__main__':
     
     max_replicas = int(args[index][4:])
     index += 1
+    # END: Parse the script command
     
+    # Build the microservice Configuration object.
     sysConfig = Configuration(pt, max_replicas, heavy_desc, light_desc)
     sysConfig.network = network
     
+    # Build the microservice System object
     system = System()
     system.clearLogs()
     
     tmpPort = system.getFreePort()
     
+    # Launch a single heavyweight instance
     new_container = client.containers.run(sysConfig.heavy_description.image, 
         detach=True, ports={innerPort:tmpPort}, environment=env,
         network=network, nano_cpus=(int(1000000000*sysConfig.heavy_description.resources["cpu"])),
@@ -477,16 +642,13 @@ if __name__ == '__main__':
     new_server = ServerDescription(ip, tmpPort, new_container, isHeavy=True)
     system.heavy.append(new_server)
     
-    #print(21)
-    #print(system)
-    #print(sysConfig)
     
+    # START: Launching NGINX Load Balancer CLient 
     nginxPort = system.getFreePort()
     configServerPort = system.getFreePort()
     while configServerPort == nginxPort:
         configServerPort = system.getFreePort()
     
-    nginx_img = "prabjotd09/nginx-dynamic:v6"
     
     for env_var in env:
         key, val = env_var.split("=")
@@ -497,10 +659,12 @@ if __name__ == '__main__':
         ports = {"3333/tcp": nginxPort, "8080/tcp":configServerPort},
         name=nginxContainerName,
         )
+    # END: Launching NGINX Load Balancer Client
     
+    
+    # Build LoadBalancerClient object and Update NGINX configuration to the initial setup
     lb_client = LoadBalancerClient(ip, configServerPort)
     post_data = system.buildConfigData(pt)
-    
     while True:
         try:
             status = lb_client.POST_configData(post_data)
@@ -510,14 +674,19 @@ if __name__ == '__main__':
             print("POST Attempt Failed")
             sleep(0.1)
             
+            
+    # Record initial confiuration
     system.logDeployments(0)
     
     try:
+        # Monitor the server periodically
         while True:
             sleep(lb_client.interval)
             monitor_data = lb_client.GET_monitorData()
             print("Monitor Data: ", monitor_data)
             
+            # If no data is recieved, then no requests were recieved by the service in the previous interval.
+            # Fabricate data object to show 0 activity.
             if len(monitor_data) == 0:
                 no_user_data = dict()
                 no_user_servers = []
@@ -538,6 +707,9 @@ if __name__ == '__main__':
                 for i in range(lb_client.interval // 15):
                     monitor_data.append(no_user_data)
             
+            
+            # Note: 'monitor_data' can be a list of data if NGINX logs more frequently than the monitoring interval.
+            #       In this case, we record all of the data, but the scaling decision is made using the most recent log in 'monitor_data'
             scale_decision = None
             for entry in monitor_data:
                 up, down, target_server = system.calculateScaling(entry, sysConfig, sysConfig.pt)
@@ -550,18 +722,20 @@ if __name__ == '__main__':
             
             print("Scaling Decision: ", scale_decision)
             
+            # Apply the scaling
             if scale_decision["upscale"]:
                 system.upscale(sysConfig, target_server, client, lb_client)
             elif scale_decision["downscale"]:
                 system.downscale(sysConfig, target_server, client, lb_client)
             
+            # Log the current configuration
             if len(monitor_data) == 0:
                 system.logDeployments(0)
             else:
                 system.logDeployments(int(monitor_data[-1]["conc_requests"]))
                 
                     
-            
+    # The graceful shutdown of the whole microservice and NGINX load balancer.
     except KeyboardInterrupt:
         print("Shutting Down Microservice")
         stop = lambda server : server.shutdown()
@@ -579,7 +753,6 @@ if __name__ == '__main__':
             
         stop_thread = threading.Thread(target=terminate, args=(nginx_container,))
         stop_thread.start()
-    #TODO: Shut down all containers 
     
             
     

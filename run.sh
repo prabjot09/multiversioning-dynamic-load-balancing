@@ -1,7 +1,4 @@
 #!/bin/sh
 # This is a comment!
 
-nginx
-python3 ./nginx-dynamic/monitoring_server.py &&
-sh proportion.sh 
-tail -f /dev/null
+nginx & sh ./nginx-dynamic/proportion.sh & python3 ./nginx-dynamic/monitoring_server.py & tail -f /dev/null
